@@ -1,0 +1,7 @@
+.direnv
+
+# clang runs dsymutil automatically when it compiles and links in one step with
+# -g, since the DWARF lives in the temporary .o that is about to be deleted.
+# Regenerated on every build, but do NOT delete it between builds: without it
+# lldb loses all file/line info.
+*.dSYM/
