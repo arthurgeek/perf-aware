@@ -1,5 +1,9 @@
 .direnv
 
+# Compiler output plus check.fish's round-trip intermediates (build/check/).
+# All of it is reproducible from the listings and the decoder.
+build/
+
 # clang runs dsymutil automatically when it compiles and links in one step with
 # -g, since the DWARF lives in the temporary .o that is about to be deleted.
 # Regenerated on every build, but do NOT delete it between builds: without it
