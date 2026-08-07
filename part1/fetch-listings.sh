@@ -10,6 +10,7 @@ base=https://raw.githubusercontent.com/cmuratori/computer_enhance/main/perfaware
 files=(
     listing_0037_single_register_mov.asm
     listing_0038_many_register_mov.asm
+    listing_0039_more_movs.asm
 )
 
 mkdir -p listings
