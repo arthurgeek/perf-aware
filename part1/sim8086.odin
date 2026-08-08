@@ -31,7 +31,16 @@ decode_rm :: proc(reader: ^bytes.Reader, mod_reg_rm: ModRegRm, w_field: byte) ->
 	if mod_reg_rm.mod_field == 0b11 {
 		rm_value = reg_encoding[mod_reg_rm.rm_field][w_field]
 	} else if mod_reg_rm.mod_field == 0b00 {
-		rm_value = fmt.tprintf("[%s]", rm_encoding[mod_reg_rm.rm_field])
+		if mod_reg_rm.rm_field == 0b110 {
+			b2, e2 := bytes.reader_read_byte(reader)
+			if e2 != .None do return nil
+			b3, e3 := bytes.reader_read_byte(reader)
+			if e3 != .None do return nil
+
+			rm_value = fmt.tprintf("[%d]", i16(b3) << 8 | i16(b2))
+		} else {
+			rm_value = fmt.tprintf("[%s]", rm_encoding[mod_reg_rm.rm_field])
+		}
 	} else if mod_reg_rm.mod_field == 0b01 {
 		b2, e2 := bytes.reader_read_byte(reader)
 		if e2 != .None do return nil
@@ -78,6 +87,7 @@ main :: proc() {
 
 		if b0 & 0b11111100 == 0b10001000 ||
 		   b0 & 0b11111100 == 0b00000000 ||
+		   b0 & 0b11111100 == 0b00111000 ||
 		   b0 & 0b11111100 == 0b00101000 {
 			mod_reg_rm := transmute(ModRegRm)b1
 
@@ -107,6 +117,8 @@ main :: proc() {
 				opcode = "add"
 			} else if b0 & 0b11111100 == 0b00101000 {
 				opcode = "sub"
+			} else if b0 & 0b11111100 == 0b00111000 {
+				opcode = "cmp"
 			}
 
 			fmt.printfln("%s %s,%s", opcode, left, right)
@@ -164,10 +176,14 @@ main :: proc() {
 				opcode = "add"
 			} else if mod_reg_rm.reg_field & 0b111 == 0b101 {
 				opcode = "sub"
+			} else if mod_reg_rm.reg_field & 0b111 == 0b111 {
+				opcode = "cmp"
 			}
 
 			fmt.printfln("%s %s,%d", opcode, rm_value, data)
-		} else if b0 & 0b11111110 == 0b00000100 || b0 & 0b11111110 == 0b00101100 {
+		} else if b0 & 0b11111110 == 0b00000100 ||
+		   b0 & 0b11111110 == 0b00101100 ||
+		   b0 & 0b11111110 == 0b00111100 {
 			w_field := b0 & 0b1
 			data: i16
 
@@ -186,6 +202,8 @@ main :: proc() {
 				opcode = "add"
 			} else if b0 & 0b11111110 == 0b00101100 {
 				opcode = "sub"
+			} else if b0 & 0b11111110 == 0b00111100 {
+				opcode = "cmp"
 			}
 
 			fmt.printfln("%s %s,%d", opcode, reg_encoding[0][w_field], data)
