@@ -76,7 +76,9 @@ main :: proc() {
 		b1, e1 := bytes.reader_read_byte(&reader)
 		if e1 != .None do break
 
-		if b0 & 0b11111100 == 0b10001000 || b0 & 0b11111100 == 0b00000000 {
+		if b0 & 0b11111100 == 0b10001000 ||
+		   b0 & 0b11111100 == 0b00000000 ||
+		   b0 & 0b11111100 == 0b00101000 {
 			mod_reg_rm := transmute(ModRegRm)b1
 
 			w_field := b0 & 0b1
@@ -103,6 +105,8 @@ main :: proc() {
 				opcode = "mov"
 			} else if b0 & 0b11111100 == 0b00000000 {
 				opcode = "add"
+			} else if b0 & 0b11111100 == 0b00101000 {
+				opcode = "sub"
 			}
 
 			fmt.printfln("%s %s,%s", opcode, left, right)
@@ -158,10 +162,12 @@ main :: proc() {
 
 			if mod_reg_rm.reg_field & 0b111 == 0b000 {
 				opcode = "add"
+			} else if mod_reg_rm.reg_field & 0b111 == 0b101 {
+				opcode = "sub"
 			}
 
 			fmt.printfln("%s %s,%d", opcode, rm_value, data)
-		} else if b0 & 0b11111110 == 0b00000100 {
+		} else if b0 & 0b11111110 == 0b00000100 || b0 & 0b11111110 == 0b00101100 {
 			w_field := b0 & 0b1
 			data: i16
 
@@ -174,7 +180,15 @@ main :: proc() {
 				data = i16(i8(b1))
 			}
 
-			fmt.printfln("%s %s,%d", "add", reg_encoding[0][w_field], data)
+			opcode: string
+
+			if b0 & 0b11111110 == 0b00000100 {
+				opcode = "add"
+			} else if b0 & 0b11111110 == 0b00101100 {
+				opcode = "sub"
+			}
+
+			fmt.printfln("%s %s,%d", opcode, reg_encoding[0][w_field], data)
 		} else {
 			fmt.printfln("unsupported first byte: %08b", b0)
 		}
