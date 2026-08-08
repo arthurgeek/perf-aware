@@ -25,6 +25,29 @@ reg_encoding := [?][2]string {
 	{"bh", "di"},
 }
 
+jump_mnemonics := map[byte]string {
+	0b01110000 = "jo",
+	0b01110001 = "jno",
+	0b01110010 = "jb",
+	0b01110011 = "jnb",
+	0b01110100 = "je",
+	0b01110101 = "jne",
+	0b01110110 = "jbe",
+	0b01110111 = "ja",
+	0b01111000 = "js",
+	0b01111001 = "jns",
+	0b01111010 = "jp",
+	0b01111011 = "jnp",
+	0b01111100 = "jl",
+	0b01111101 = "jnl",
+	0b01111110 = "jle",
+	0b01111111 = "jg",
+	0b11100000 = "loopnz",
+	0b11100001 = "loopz",
+	0b11100010 = "loop",
+	0b11100011 = "jcxz",
+}
+
 decode_rm :: proc(reader: ^bytes.Reader, mod_reg_rm: ModRegRm, w_field: byte) -> Maybe(string) {
 	rm_value: string
 
@@ -207,6 +230,8 @@ main :: proc() {
 			}
 
 			fmt.printfln("%s %s,%d", opcode, reg_encoding[0][w_field], data)
+		} else if mnemonic, is_jump := jump_mnemonics[b0]; is_jump {
+			fmt.printfln("%s $%+d", mnemonic, i16(i8(b1)) + 2)
 		} else {
 			fmt.printfln("unsupported first byte: %08b", b0)
 		}
