@@ -4,6 +4,7 @@ package sim8086
 
 import "core:bytes"
 import "core:fmt"
+import "core:io"
 import "core:os"
 
 ModRegRm :: bit_field byte {
@@ -48,6 +49,21 @@ jump_mnemonics := map[byte]string {
 	0b11100011 = "jcxz",
 }
 
+read_u16 :: proc(reader: ^bytes.Reader) -> (v: u16, err: io.Error) {
+	lo := bytes.reader_read_byte(reader) or_return
+	hi := bytes.reader_read_byte(reader) or_return
+
+	return u16(hi) << 8 | u16(lo), .None
+}
+
+read_data :: proc(reader: ^bytes.Reader, lo: byte, wide: bool) -> (data: i16, err: io.Error) {
+	if !wide do return i16(i8(lo)), .None
+
+	hi := bytes.reader_read_byte(reader) or_return
+
+	return i16(hi) << 8 | i16(lo), .None
+}
+
 decode_rm :: proc(reader: ^bytes.Reader, mod_reg_rm: ModRegRm, w_field: byte) -> Maybe(string) {
 	rm_value: string
 
@@ -55,12 +71,10 @@ decode_rm :: proc(reader: ^bytes.Reader, mod_reg_rm: ModRegRm, w_field: byte) ->
 		rm_value = reg_encoding[mod_reg_rm.rm_field][w_field]
 	} else if mod_reg_rm.mod_field == 0b00 {
 		if mod_reg_rm.rm_field == 0b110 {
-			b2, e2 := bytes.reader_read_byte(reader)
-			if e2 != .None do return nil
-			b3, e3 := bytes.reader_read_byte(reader)
-			if e3 != .None do return nil
+			addr, aerr := read_u16(reader)
+			if aerr != .None do return nil
 
-			rm_value = fmt.tprintf("[%d]", u16(b3) << 8 | u16(b2))
+			rm_value = fmt.tprintf("[%d]", addr)
 		} else {
 			rm_value = fmt.tprintf("[%s]", rm_encoding[mod_reg_rm.rm_field])
 		}
@@ -70,14 +84,10 @@ decode_rm :: proc(reader: ^bytes.Reader, mod_reg_rm: ModRegRm, w_field: byte) ->
 
 		rm_value = fmt.tprintf("[%s + %d]", rm_encoding[mod_reg_rm.rm_field], i16(i8(b2)))
 	} else if mod_reg_rm.mod_field == 0b10 {
-		b2, e2 := bytes.reader_read_byte(reader)
-		if e2 != .None do return nil
-		b3, e3 := bytes.reader_read_byte(reader)
-		if e3 != .None do return nil
+		disp, derr := read_u16(reader)
+		if derr != .None do return nil
 
-		disp := i16(b3) << 8 | i16(b2)
-
-		rm_value = fmt.tprintf("[%s + %d]", rm_encoding[mod_reg_rm.rm_field], disp)
+		rm_value = fmt.tprintf("[%s + %d]", rm_encoding[mod_reg_rm.rm_field], transmute(i16)disp)
 	}
 
 	return rm_value
@@ -103,10 +113,8 @@ main :: proc() {
 	bytes.reader_init(&reader, data)
 
 	for {
-		b0, e0 := bytes.reader_read_byte(&reader)
-		if e0 != .None do break
-		b1, e1 := bytes.reader_read_byte(&reader)
-		if e1 != .None do break
+		b0 := bytes.reader_read_byte(&reader) or_break
+		b1 := bytes.reader_read_byte(&reader) or_break
 
 		if b0 & 0b11111100 == 0b10001000 ||
 		   b0 & 0b11111100 == 0b00000000 ||
@@ -148,16 +156,8 @@ main :: proc() {
 		} else if b0 & 0b11110000 == 0b10110000 {
 			w_field := (b0 >> 3) & 1
 			reg := b0 & 0b111
-			data: i16
 
-			if w_field == 0b1 {
-				b2, e2 := bytes.reader_read_byte(&reader)
-				if e2 != .None do break
-
-				data = i16(b2) << 8 | i16(b1)
-			} else {
-				data = i16(i8(b1))
-			}
+			data := read_data(&reader, b1, w_field == 0b1) or_break
 
 			fmt.printfln("%s %s,%d", "mov", reg_encoding[reg][w_field], data)
 		} else if b0 & 0b11111100 == 0b10000000 {
@@ -179,19 +179,8 @@ main :: proc() {
 				rm_value = fmt.tprintf("%s %s", w_field == 1 ? "word" : "byte", rm_value)
 			}
 
-			b4, e4 := bytes.reader_read_byte(&reader)
-			if e4 != .None do break
-
-			data: i16
-
-			if s_field == 0b0 && w_field == 0b1 {
-				b5, e5 := bytes.reader_read_byte(&reader)
-				if e5 != .None do break
-
-				data = i16(b5) << 8 | i16(b4)
-			} else {
-				data = i16(i8(b4))
-			}
+			b4 := bytes.reader_read_byte(&reader) or_break
+			data := read_data(&reader, b4, s_field == 0b0 && w_field == 0b1) or_break
 
 			opcode: string
 
@@ -219,35 +208,16 @@ main :: proc() {
 				rm_value = fmt.tprintf("%s %s", w_field == 1 ? "word" : "byte", rm_value)
 			}
 
-			b2, e2 := bytes.reader_read_byte(&reader)
-			if e2 != .None do break
-
-			data: i16
-
-			if w_field == 0b1 {
-				b3, e3 := bytes.reader_read_byte(&reader)
-				if e3 != .None do break
-
-				data = i16(b3) << 8 | i16(b2)
-			} else {
-				data = i16(i8(b2))
-			}
+			b2 := bytes.reader_read_byte(&reader) or_break
+			data := read_data(&reader, b2, w_field == 0b1) or_break
 
 			fmt.printfln("mov %s,%d", rm_value, data)
 		} else if b0 & 0b11111110 == 0b00000100 ||
 		   b0 & 0b11111110 == 0b00101100 ||
 		   b0 & 0b11111110 == 0b00111100 {
 			w_field := b0 & 0b1
-			data: i16
 
-			if w_field == 0b1 {
-				b2, e2 := bytes.reader_read_byte(&reader)
-				if e2 != .None do break
-
-				data = i16(b2) << 8 | i16(b1)
-			} else {
-				data = i16(i8(b1))
-			}
+			data := read_data(&reader, b1, w_field == 0b1) or_break
 
 			opcode: string
 
@@ -261,8 +231,7 @@ main :: proc() {
 
 			fmt.printfln("%s %s,%d", opcode, reg_encoding[0][w_field], data)
 		} else if b0 & 0b11111100 == 0b10100000 {
-			b2, e2 := bytes.reader_read_byte(&reader)
-			if e2 != .None do break
+			b2 := bytes.reader_read_byte(&reader) or_break
 
 			w_field := b0 & 0b1
 			addr := u16(b2) << 8 | u16(b1)
