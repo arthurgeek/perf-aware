@@ -15,6 +15,8 @@ files=(
     listing_0041_add_sub_cmp_jnz.asm
     listing_0043_immediate_movs.asm
     listing_0043_immediate_movs.txt
+    listing_0044_register_movs.asm
+    listing_0044_register_movs.txt
 )
 
 mkdir -p listings

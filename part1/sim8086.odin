@@ -179,14 +179,22 @@ execute_instruction :: proc(registers: ^Registers, inst: Instruction) {
 	dst_reg, is_reg := inst.dst.(Register)
 	fmt.assertf(is_reg, "expected register destination, got %v in %v", inst.dst, inst)
 
-	src, is_immediate := inst.src.(Immediate)
-	fmt.assertf(is_immediate, "expected immediate source, got %v in %v", inst.src, inst)
+	value: u16
+
+	switch v in inst.src {
+	case Immediate:
+		value = u16(v)
+	case Register:
+		value = registers[v.index]
+	case EffectiveAddress, DirectAddress, JumpOffset:
+		fmt.panicf("expected immediate or register source, got %v in %v", inst.src, inst)
+	}
 
 	dst := reg_encoding[dst_reg.index][dst_reg.wide ? 1 : 0]
 
-	fmt.printf(" ; %s:%#x->%#x", dst, registers[dst_reg.index], src)
+	fmt.printf(" ; %s:%#x->%#x", dst, registers[dst_reg.index], value)
 
-	registers[dst_reg.index] = u16(src)
+	registers[dst_reg.index] = value
 }
 
 decode_instruction :: proc(reader: ^bytes.Reader) -> (inst: Instruction, err: io.Error) {
