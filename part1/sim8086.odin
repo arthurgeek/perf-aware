@@ -60,7 +60,7 @@ decode_rm :: proc(reader: ^bytes.Reader, mod_reg_rm: ModRegRm, w_field: byte) ->
 			b3, e3 := bytes.reader_read_byte(reader)
 			if e3 != .None do return nil
 
-			rm_value = fmt.tprintf("[%d]", i16(b3) << 8 | i16(b2))
+			rm_value = fmt.tprintf("[%d]", u16(b3) << 8 | u16(b2))
 		} else {
 			rm_value = fmt.tprintf("[%s]", rm_encoding[mod_reg_rm.rm_field])
 		}
@@ -68,7 +68,7 @@ decode_rm :: proc(reader: ^bytes.Reader, mod_reg_rm: ModRegRm, w_field: byte) ->
 		b2, e2 := bytes.reader_read_byte(reader)
 		if e2 != .None do return nil
 
-		rm_value = fmt.tprintf("[%s + %d]", rm_encoding[mod_reg_rm.rm_field], b2)
+		rm_value = fmt.tprintf("[%s + %d]", rm_encoding[mod_reg_rm.rm_field], i16(i8(b2)))
 	} else if mod_reg_rm.mod_field == 0b10 {
 		b2, e2 := bytes.reader_read_byte(reader)
 		if e2 != .None do return nil
@@ -204,6 +204,36 @@ main :: proc() {
 			}
 
 			fmt.printfln("%s %s,%d", opcode, rm_value, data)
+		} else if b0 & 0b11111110 == 0b11000110 {
+			mod_reg_rm := transmute(ModRegRm)b1
+
+			w_field := b0 & 0b1
+
+			rm_value, ok := decode_rm(&reader, mod_reg_rm, w_field).?
+
+			if !ok {
+				break
+			}
+
+			if mod_reg_rm.mod_field != 0b11 {
+				rm_value = fmt.tprintf("%s %s", w_field == 1 ? "word" : "byte", rm_value)
+			}
+
+			b2, e2 := bytes.reader_read_byte(&reader)
+			if e2 != .None do break
+
+			data: i16
+
+			if w_field == 0b1 {
+				b3, e3 := bytes.reader_read_byte(&reader)
+				if e3 != .None do break
+
+				data = i16(b3) << 8 | i16(b2)
+			} else {
+				data = i16(i8(b2))
+			}
+
+			fmt.printfln("mov %s,%d", rm_value, data)
 		} else if b0 & 0b11111110 == 0b00000100 ||
 		   b0 & 0b11111110 == 0b00101100 ||
 		   b0 & 0b11111110 == 0b00111100 {
@@ -230,6 +260,19 @@ main :: proc() {
 			}
 
 			fmt.printfln("%s %s,%d", opcode, reg_encoding[0][w_field], data)
+		} else if b0 & 0b11111100 == 0b10100000 {
+			b2, e2 := bytes.reader_read_byte(&reader)
+			if e2 != .None do break
+
+			w_field := b0 & 0b1
+			addr := u16(b2) << 8 | u16(b1)
+			acc := reg_encoding[0][w_field]
+
+			if b0 & 0b00000010 == 0b00000000 {
+				fmt.printfln("mov %s,[%d]", acc, addr)
+			} else {
+				fmt.printfln("mov [%d],%s", addr, acc)
+			}
 		} else if mnemonic, is_jump := jump_mnemonics[b0]; is_jump {
 			fmt.printfln("%s $%+d", mnemonic, i16(i8(b1)) + 2)
 		} else {

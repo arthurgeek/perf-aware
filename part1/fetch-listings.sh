@@ -11,6 +11,7 @@ files=(
     listing_0037_single_register_mov.asm
     listing_0038_many_register_mov.asm
     listing_0039_more_movs.asm
+    listing_0040_challenge_movs.asm
     listing_0041_add_sub_cmp_jnz.asm
 )
 
