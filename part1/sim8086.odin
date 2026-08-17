@@ -138,10 +138,14 @@ decode_rm :: proc(
 	return
 }
 
+register_name :: proc(r: Register) -> string {
+	return reg_encoding[r.index][r.wide ? 1 : 0]
+}
+
 format_operand :: proc(op: Operand) -> string {
 	switch v in op {
 	case Register:
-		return reg_encoding[v.index][v.wide ? 1 : 0]
+		return register_name(v)
 	case EffectiveAddress:
 		if v.disp == 0 do return fmt.tprintf("[%s]", rm_encoding[v.base])
 		if v.disp < 0 do return fmt.tprintf("[%s - %d]", rm_encoding[v.base], -i32(v.disp))
@@ -190,7 +194,7 @@ execute_instruction :: proc(registers: ^Registers, inst: Instruction) {
 		fmt.panicf("expected immediate or register source, got %v in %v", inst.src, inst)
 	}
 
-	dst := reg_encoding[dst_reg.index][dst_reg.wide ? 1 : 0]
+	dst := register_name(dst_reg)
 
 	fmt.printf(" ; %s:%#x->%#x", dst, registers[dst_reg.index], value)
 
@@ -341,7 +345,7 @@ main :: proc() {
 
 		for index in print_order {
 			value := registers[index]
-			fmt.printfln("      %s: 0x%04x (%d)", reg_encoding[index][1], value, value)
+			fmt.printfln("      %s: 0x%04x (%d)", register_name({index, true}), value, value)
 		}
 	}
 }
