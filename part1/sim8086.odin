@@ -26,6 +26,12 @@ reg_encoding := [?][2]string {
 	{"bh", "di"},
 }
 
+arith_mnemonics := [8]string {
+	0b000 = "add",
+	0b101 = "sub",
+	0b111 = "cmp",
+}
+
 jump_mnemonics := map[byte]string {
 	0b01110000 = "jo",
 	0b01110001 = "jno",
@@ -139,17 +145,7 @@ main :: proc() {
 				left = reg_value
 			}
 
-			opcode: string
-
-			if b0 & 0b11111100 == 0b10001000 {
-				opcode = "mov"
-			} else if b0 & 0b11111100 == 0b00000000 {
-				opcode = "add"
-			} else if b0 & 0b11111100 == 0b00101000 {
-				opcode = "sub"
-			} else if b0 & 0b11111100 == 0b00111000 {
-				opcode = "cmp"
-			}
+			opcode := b0 & 0b11111100 == 0b10001000 ? "mov" : arith_mnemonics[(b0 >> 3) & 0b111]
 
 			fmt.printfln("%s %s,%s", opcode, left, right)
 		} else if b0 & 0b11110000 == 0b10110000 {
@@ -174,17 +170,7 @@ main :: proc() {
 			b4 := bytes.reader_read_byte(&reader) or_break
 			data := read_data(&reader, b4, s_field == 0b0 && w_field == 0b1) or_break
 
-			opcode: string
-
-			if mod_reg_rm.reg_field & 0b111 == 0b000 {
-				opcode = "add"
-			} else if mod_reg_rm.reg_field & 0b111 == 0b101 {
-				opcode = "sub"
-			} else if mod_reg_rm.reg_field & 0b111 == 0b111 {
-				opcode = "cmp"
-			}
-
-			fmt.printfln("%s %s,%d", opcode, rm_value, data)
+			fmt.printfln("%s %s,%d", arith_mnemonics[mod_reg_rm.reg_field], rm_value, data)
 		} else if b0 & 0b11111110 == 0b11000110 {
 			mod_reg_rm := transmute(ModRegRm)b1
 
@@ -207,17 +193,7 @@ main :: proc() {
 
 			data := read_data(&reader, b1, w_field == 0b1) or_break
 
-			opcode: string
-
-			if b0 & 0b11111110 == 0b00000100 {
-				opcode = "add"
-			} else if b0 & 0b11111110 == 0b00101100 {
-				opcode = "sub"
-			} else if b0 & 0b11111110 == 0b00111100 {
-				opcode = "cmp"
-			}
-
-			fmt.printfln("%s %s,%d", opcode, reg_encoding[0][w_field], data)
+			fmt.printfln("%s %s,%d", arith_mnemonics[(b0 >> 3) & 0b111], reg_encoding[0][w_field], data)
 		} else if b0 & 0b11111100 == 0b10100000 {
 			b2 := bytes.reader_read_byte(&reader) or_break
 
