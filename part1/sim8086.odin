@@ -112,20 +112,25 @@ decode_rm :: proc(
 ) {
 	switch mod_reg_rm.mod_field {
 	case 0b00:
+		// memory mode, no displacement
+		// no [bp] without displacement: 110 means 16-bit direct address
 		if mod_reg_rm.rm_field == 0b110 {
 			op = DirectAddress(read_u16(reader) or_return)
 		} else {
 			op = EffectiveAddress{EABase(mod_reg_rm.rm_field), 0}
 		}
 	case 0b01:
+		// memory mode, 8-bit displacement
 		disp := bytes.reader_read_byte(reader) or_return
 
 		op = EffectiveAddress{EABase(mod_reg_rm.rm_field), i16(i8(disp))}
 	case 0b10:
+		// memory mode, 16-bit displacement
 		disp := read_u16(reader) or_return
 
 		op = EffectiveAddress{EABase(mod_reg_rm.rm_field), transmute(i16)disp}
 	case 0b11:
+		// register mode
 		op = Register{RegisterIndex(mod_reg_rm.rm_field), wide}
 	}
 
@@ -173,6 +178,7 @@ decode_instruction :: proc(reader: ^bytes.Reader) -> (inst: Instruction, err: io
 	b0 := bytes.reader_read_byte(reader) or_return
 	b1 := bytes.reader_read_byte(reader) or_return
 
+	// register/memory to/from register: 100010dw mov, 000000dw add, 001110dw cmp, 001010dw sub
 	if b0 & 0b11111100 == 0b10001000 ||
 	   b0 & 0b11111100 == 0b00000000 ||
 	   b0 & 0b11111100 == 0b00111000 ||
@@ -185,14 +191,17 @@ decode_instruction :: proc(reader: ^bytes.Reader) -> (inst: Instruction, err: io
 		rm := decode_rm(reader, mod_reg_rm, wide) or_return
 
 		dst, src := rm, reg
+		// d bit set: register is the destination
 		if b0 & 0b00000010 != 0b00000000 {
 			dst, src = reg, rm
 		}
 
+		// 100010dw is mov; otherwise bits 5-3 select add/sub/cmp
 		opcode := b0 & 0b11111100 == 0b10001000 ? "mov" : arith_mnemonics[(b0 >> 3) & 0b111]
 
 		inst = {opcode, dst, src, wide}
 	} else if b0 & 0b11110000 == 0b10110000 {
+		// mov: immediate to register
 		wide := (b0 >> 3) & 0b1 == 0b1
 		reg := Register{RegisterIndex(b0 & 0b111), wide}
 
@@ -200,6 +209,7 @@ decode_instruction :: proc(reader: ^bytes.Reader) -> (inst: Instruction, err: io
 
 		inst = {"mov", reg, Immediate(data), wide}
 	} else if b0 & 0b11111100 == 0b10000000 {
+		// add/sub/cmp: immediate to register/memory
 		mod_reg_rm := transmute(ModRegRm)b1
 
 		wide := b0 & 0b1 == 0b1
@@ -210,8 +220,10 @@ decode_instruction :: proc(reader: ^bytes.Reader) -> (inst: Instruction, err: io
 		b4 := bytes.reader_read_byte(reader) or_return
 		data := read_data(reader, b4, !sign_extend && wide) or_return
 
+		// reg field selects add/sub/cmp
 		inst = {arith_mnemonics[mod_reg_rm.reg_field], rm, Immediate(data), wide}
 	} else if b0 & 0b11111110 == 0b11000110 {
+		// mov: immediate to register/memory
 		mod_reg_rm := transmute(ModRegRm)b1
 
 		wide := b0 & 0b1 == 0b1
@@ -225,24 +237,29 @@ decode_instruction :: proc(reader: ^bytes.Reader) -> (inst: Instruction, err: io
 	} else if b0 & 0b11111110 == 0b00000100 ||
 	   b0 & 0b11111110 == 0b00101100 ||
 	   b0 & 0b11111110 == 0b00111100 {
+		// immediate to accumulator: 0000010w add, 0010110w sub, 0011110w cmp
 		wide := b0 & 0b1 == 0b1
 
 		data := read_data(reader, b1, wide) or_return
 
+		// bits 5-3 select add/sub/cmp
 		inst = {arith_mnemonics[(b0 >> 3) & 0b111], Register{0, wide}, Immediate(data), wide}
 	} else if b0 & 0b11111100 == 0b10100000 {
+		// mov: memory to/from accumulator
 		b2 := bytes.reader_read_byte(reader) or_return
 
 		wide := b0 & 0b1 == 0b1
 		addr := DirectAddress(u16(b2) << 8 | u16(b1))
 		acc := Register{0, wide}
 
+		// d bit inverted here: 0 means accumulator is the destination
 		if b0 & 0b00000010 == 0b00000000 {
 			inst = {"mov", acc, addr, wide}
 		} else {
 			inst = {"mov", addr, acc, wide}
 		}
 	} else if mnemonic, is_jump := jump_mnemonics[b0]; is_jump {
+		// conditional jumps and loops
 		inst = {mnemonic, JumpOffset(i8(b1)), nil, false}
 	} else {
 		fmt.printfln("unsupported first byte: %08b", b0)
