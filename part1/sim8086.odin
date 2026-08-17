@@ -135,6 +135,11 @@ flag_letters := [Flag]string {
 	.Sign   = "S",
 }
 
+Cpu :: struct {
+	registers: Registers,
+	flags:     Flags,
+}
+
 read_u16 :: proc(reader: ^bytes.Reader) -> (v: u16, err: io.Error) {
 	lo := bytes.reader_read_byte(reader) or_return
 	hi := bytes.reader_read_byte(reader) or_return
@@ -248,7 +253,7 @@ update_flags :: proc(flags: ^Flags, result: u16) {
 	if i16(result) < 0 do flags^ += {.Sign}
 }
 
-execute_instruction :: proc(registers: ^Registers, flags: ^Flags, inst: Instruction) {
+execute_instruction :: proc(cpu: ^Cpu, inst: Instruction) {
 	dst_reg, is_reg := inst.dst.(Register)
 	fmt.assertf(is_reg, "expected register destination, got %v in %v", inst.dst, inst)
 
@@ -258,30 +263,30 @@ execute_instruction :: proc(registers: ^Registers, flags: ^Flags, inst: Instruct
 	case Immediate:
 		value = u16(v)
 	case Register:
-		value = registers[v.index]
+		value = cpu.registers[v.index]
 	case EffectiveAddress, DirectAddress, JumpOffset:
 		fmt.panicf("expected immediate or register source, got %v in %v", inst.src, inst)
 	}
 
 	dst := register_name(dst_reg)
-	old_result := registers[dst_reg.index]
-	old_flags := flags^
+	old_result := cpu.registers[dst_reg.index]
+	old_flags := cpu.flags
 
 	switch inst.op {
 	case .mov:
-		registers[dst_reg.index] = value
+		cpu.registers[dst_reg.index] = value
 	case .sub:
-		result := registers[dst_reg.index] - value
-		registers[dst_reg.index] = result
+		result := cpu.registers[dst_reg.index] - value
+		cpu.registers[dst_reg.index] = result
 
-		update_flags(flags, result)
+		update_flags(&cpu.flags, result)
 	case .add:
-		result := registers[dst_reg.index] + value
-		registers[dst_reg.index] = result
+		result := cpu.registers[dst_reg.index] + value
+		cpu.registers[dst_reg.index] = result
 
-		update_flags(flags, result)
+		update_flags(&cpu.flags, result)
 	case .cmp:
-		update_flags(flags, registers[dst_reg.index] - value)
+		update_flags(&cpu.flags, cpu.registers[dst_reg.index] - value)
 	case .none,
 	     .jo,
 	     .jno,
@@ -306,8 +311,8 @@ execute_instruction :: proc(registers: ^Registers, flags: ^Flags, inst: Instruct
 		fmt.panicf("cannot execute %v in %v", inst.op, inst)
 	}
 
-	new_result := registers[dst_reg.index]
-	new_flags := flags^
+	new_result := cpu.registers[dst_reg.index]
+	new_flags := cpu.flags
 
 	fmt.printf(" ;")
 
@@ -444,15 +449,14 @@ main :: proc() {
 
 	reader: bytes.Reader
 	bytes.reader_init(&reader, data)
-	registers: Registers
-	flags: Flags
+	cpu: Cpu
 
 	for {
 		inst := decode_instruction(&reader) or_break
 
 		if inst.op != .none {
 			print_instruction(inst)
-			if exec do execute_instruction(&registers, &flags, inst)
+			if exec do execute_instruction(&cpu, inst)
 			fmt.println()
 		}
 
@@ -463,13 +467,13 @@ main :: proc() {
 		fmt.println("\nFinal registers:")
 
 		for index in register_print_order {
-			value := registers[index]
+			value := cpu.registers[index]
 			if value == 0 do continue
 			fmt.printfln("      %s: 0x%04x (%d)", register_name({index, true}), value, value)
 		}
 
-		if flags != {} {
-			fmt.printfln("   flags: %s", format_flags(flags))
+		if cpu.flags != {} {
+			fmt.printfln("   flags: %s", format_flags(cpu.flags))
 		}
 	}
 }
