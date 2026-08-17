@@ -266,5 +266,7 @@ main :: proc() {
 		} else {
 			fmt.printfln("unsupported first byte: %08b", b0)
 		}
+
+		free_all(context.temp_allocator)
 	}
 }
