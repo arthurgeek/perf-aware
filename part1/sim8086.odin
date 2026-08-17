@@ -226,7 +226,7 @@ format_flags :: proc(flags: Flags) -> string {
 print_instruction :: proc(inst: Instruction) {
 	dst := format_operand(inst.dst)
 
-	_, src_is_immediate := inst.src.(Immediate)
+	imm, src_is_immediate := inst.src.(Immediate)
 	_, dst_is_ea := inst.dst.(EffectiveAddress)
 	_, dst_is_direct := inst.dst.(DirectAddress)
 
@@ -239,7 +239,7 @@ print_instruction :: proc(inst: Instruction) {
 	} else {
 		src := format_operand(inst.src)
 
-		if imm, is_immediate := inst.src.(Immediate); is_immediate && inst.wide {
+		if src_is_immediate && inst.wide {
 			src = fmt.tprintf("%d", u16(imm))
 		}
 
@@ -275,18 +275,17 @@ execute_instruction :: proc(cpu: ^Cpu, inst: Instruction) {
 	switch inst.op {
 	case .mov:
 		cpu.registers[dst_reg.index] = value
-	case .sub:
-		result := cpu.registers[dst_reg.index] - value
-		cpu.registers[dst_reg.index] = result
-
-		update_flags(&cpu.flags, result)
 	case .add:
 		result := cpu.registers[dst_reg.index] + value
 		cpu.registers[dst_reg.index] = result
 
 		update_flags(&cpu.flags, result)
-	case .cmp:
-		update_flags(&cpu.flags, cpu.registers[dst_reg.index] - value)
+	case .sub, .cmp:
+		result := cpu.registers[dst_reg.index] - value
+		// cmp is sub without the writeback
+		if inst.op == .sub do cpu.registers[dst_reg.index] = result
+
+		update_flags(&cpu.flags, result)
 	case .none,
 	     .jo,
 	     .jno,
