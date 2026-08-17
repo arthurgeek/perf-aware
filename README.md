@@ -2,7 +2,7 @@
 
 Homework for [Casey Muratori's Performance-Aware Programming course](https://www.computerenhance.com/), written in [Odin](https://odin-lang.org/).
 
-## Part 1: 8086 decoder
+## Part 1: 8086 decoder and simulator
 
 The [Nix](https://nixos.org/) dev shell provides the toolchain (odin, nasm):
 
@@ -14,7 +14,7 @@ odin build . -out:build/sim8086
 ./check.sh
 ```
 
-`sim8086` disassembles an 8086 binary. `check.sh` round-trips every listing through nasm and compares the resulting binaries.
+`sim8086` disassembles an 8086 binary, or simulates it with `-exec`. `check.sh` round-trips every listing through nasm and compares simulation output against the course's reference transcripts.
 
 The course listings are (C) Molly Rocket, Inc. and are not part of this repository; `fetch-listings.sh` downloads them from the official [computer_enhance](https://github.com/cmuratori/computer_enhance) repository.
 

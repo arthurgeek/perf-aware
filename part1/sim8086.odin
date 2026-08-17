@@ -57,6 +57,7 @@ jump_mnemonics := map[byte]string {
 
 RegisterIndex :: distinct byte
 EABase :: distinct byte
+Registers :: distinct [8]u16
 
 Register :: struct {
 	index: RegisterIndex,
@@ -168,10 +169,24 @@ print_instruction :: proc(inst: Instruction) {
 	}
 
 	if inst.src == nil {
-		fmt.printfln("%s %s", inst.mnemonic, dst)
+		fmt.printf("%s %s", inst.mnemonic, dst)
 	} else {
-		fmt.printfln("%s %s,%s", inst.mnemonic, dst, format_operand(inst.src))
+		fmt.printf("%s %s, %s", inst.mnemonic, dst, format_operand(inst.src))
 	}
+}
+
+execute_instruction :: proc(registers: ^Registers, inst: Instruction) {
+	dst_reg, is_reg := inst.dst.(Register)
+	fmt.assertf(is_reg, "expected register destination, got %v in %v", inst.dst, inst)
+
+	src, is_immediate := inst.src.(Immediate)
+	fmt.assertf(is_immediate, "expected immediate source, got %v in %v", inst.src, inst)
+
+	dst := reg_encoding[dst_reg.index][dst_reg.wide ? 1 : 0]
+
+	fmt.printf(" ; %s:%#x->%#x", dst, registers[dst_reg.index], src)
+
+	registers[dst_reg.index] = u16(src)
 }
 
 decode_instruction :: proc(reader: ^bytes.Reader) -> (inst: Instruction, err: io.Error) {
@@ -269,31 +284,56 @@ decode_instruction :: proc(reader: ^bytes.Reader) -> (inst: Instruction, err: io
 }
 
 main :: proc() {
-	if len(os.args) <= 1 {
-		fmt.println("You need to pass the binary file as the first argument")
+	exec := false
+	filename: string
+
+	for arg in os.args[1:] {
+		switch arg {
+		case "-exec":
+			exec = true
+		case:
+			filename = arg
+		}
+	}
+
+	if filename == "" {
+		fmt.println("You need to pass the binary file as an argument")
 		return
 	}
 
-	data, err := os.read_entire_file(os.args[1], context.allocator)
+	data, err := os.read_entire_file(filename, context.allocator)
 	defer delete(data)
 
 	if err != nil {
-		fmt.printfln("Failed to read %s: %v", os.args[1], err)
+		fmt.printfln("Failed to read %s: %v", filename, err)
 		return
 	}
 
-	fmt.printfln("bits 16")
+	if !exec do fmt.printfln("bits 16")
 
 	reader: bytes.Reader
 	bytes.reader_init(&reader, data)
+	registers: Registers
 
 	for {
 		inst := decode_instruction(&reader) or_break
 
 		if inst.mnemonic != "" {
 			print_instruction(inst)
+			if exec do execute_instruction(&registers, inst)
+			fmt.println()
 		}
 
 		free_all(context.temp_allocator)
+	}
+
+	if exec {
+		fmt.println("\nFinal registers:")
+		print_order := [?]RegisterIndex{0b000, 0b011, 0b001, 0b010, 0b100, 0b101, 0b110, 0b111}
+
+		for index in print_order {
+			value := registers[index]
+			fmt.printfln("      %s: 0x%04x (%d)", reg_encoding[index][1], value, value)
+		}
 	}
 }

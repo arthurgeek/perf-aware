@@ -13,6 +13,8 @@ files=(
     listing_0039_more_movs.asm
     listing_0040_challenge_movs.asm
     listing_0041_add_sub_cmp_jnz.asm
+    listing_0043_immediate_movs.asm
+    listing_0043_immediate_movs.txt
 )
 
 mkdir -p listings

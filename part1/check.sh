@@ -44,6 +44,12 @@ report_failure() {
         | tail -n +3 | sed 's/^/    /'
 }
 
+# Strip incidentals before comparing simulation transcripts: CRLF endings,
+# the "--- ... execution ---" banner, trailing whitespace, and blank lines.
+normalize_transcript() {
+    tr -d '\r' | sed -e '/^--- .*---$/d' -e 's/[[:space:]]*$//' -e '/^$/d'
+}
+
 passed=0
 failed=0
 
@@ -72,6 +78,23 @@ for asm in "${listings[@]}"; do
     else
         report_failure "$name" "$ref" "$out"
         failed=$((failed + 1))
+    fi
+
+    # Simulation check: only for listings that ship a reference transcript.
+    txt=$listings_dir/$name.txt
+    if [ -f "$txt" ]; then
+        exec_out=$build/$name.exec.txt
+        "$DECODER" -exec "$ref" >"$exec_out"
+
+        if diff -q <(normalize_transcript <"$txt") <(normalize_transcript <"$exec_out") >/dev/null; then
+            echo "PASS $name (exec)"
+            passed=$((passed + 1))
+        else
+            echo "FAIL $name (exec)"
+            diff -u -L expected -L simulated <(normalize_transcript <"$txt") <(normalize_transcript <"$exec_out") \
+                | tail -n +3 | sed 's/^/    /'
+            failed=$((failed + 1))
+        fi
     fi
 done
 
