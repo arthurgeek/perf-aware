@@ -26,6 +26,9 @@ reg_encoding := [?][2]string {
 	{"bh", "di"},
 }
 
+// natural order for the final dump: ax, bx, cx, dx — not encoding order
+register_print_order := [?]RegisterIndex{0b000, 0b011, 0b001, 0b010, 0b100, 0b101, 0b110, 0b111}
+
 arith_mnemonics := [8]string {
 	0b000 = "add",
 	0b101 = "sub",
@@ -341,9 +344,8 @@ main :: proc() {
 
 	if exec {
 		fmt.println("\nFinal registers:")
-		print_order := [?]RegisterIndex{0b000, 0b011, 0b001, 0b010, 0b100, 0b101, 0b110, 0b111}
 
-		for index in print_order {
+		for index in register_print_order {
 			value := registers[index]
 			fmt.printfln("      %s: 0x%04x (%d)", register_name({index, true}), value, value)
 		}
