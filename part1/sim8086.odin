@@ -6,6 +6,7 @@ import "core:bytes"
 import "core:fmt"
 import "core:io"
 import "core:os"
+import "core:strings"
 
 ModRegRm :: bit_field byte {
 	rm_field:  byte | 3,
@@ -91,6 +92,20 @@ Instruction :: struct {
 	wide:     bool,
 }
 
+Flag :: enum {
+	Parity,
+	Zero,
+	Sign,
+}
+
+Flags :: bit_set[Flag;u16]
+
+flag_letters := [Flag]string {
+	.Parity = "P",
+	.Zero   = "Z",
+	.Sign   = "S",
+}
+
 read_u16 :: proc(reader: ^bytes.Reader) -> (v: u16, err: io.Error) {
 	lo := bytes.reader_read_byte(reader) or_return
 	hi := bytes.reader_read_byte(reader) or_return
@@ -164,6 +179,16 @@ format_operand :: proc(op: Operand) -> string {
 	return ""
 }
 
+format_flags :: proc(flags: Flags) -> string {
+	sb := strings.builder_make(context.temp_allocator)
+
+	for f in Flag {
+		if f in flags do strings.write_string(&sb, flag_letters[f])
+	}
+
+	return strings.to_string(sb)
+}
+
 print_instruction :: proc(inst: Instruction) {
 	dst := format_operand(inst.dst)
 
@@ -178,11 +203,23 @@ print_instruction :: proc(inst: Instruction) {
 	if inst.src == nil {
 		fmt.printf("%s %s", inst.mnemonic, dst)
 	} else {
-		fmt.printf("%s %s, %s", inst.mnemonic, dst, format_operand(inst.src))
+		src := format_operand(inst.src)
+
+		if imm, is_immediate := inst.src.(Immediate); is_immediate && inst.wide {
+			src = fmt.tprintf("%d", u16(imm))
+		}
+
+		fmt.printf("%s %s, %s", inst.mnemonic, dst, src)
 	}
 }
 
-execute_instruction :: proc(registers: ^Registers, inst: Instruction) {
+update_flags :: proc(flags: ^Flags, result: u16) {
+	flags^ -= {.Zero, .Sign, .Parity}
+	if result == 0 do flags^ += {.Zero, .Parity}
+	if i16(result) < 0 do flags^ += {.Sign}
+}
+
+execute_instruction :: proc(registers: ^Registers, flags: ^Flags, inst: Instruction) {
 	dst_reg, is_reg := inst.dst.(Register)
 	fmt.assertf(is_reg, "expected register destination, got %v in %v", inst.dst, inst)
 
@@ -198,10 +235,40 @@ execute_instruction :: proc(registers: ^Registers, inst: Instruction) {
 	}
 
 	dst := register_name(dst_reg)
+	old_result := registers[dst_reg.index]
+	old_flags := flags^
 
-	fmt.printf(" ; %s:%#x->%#x", dst, registers[dst_reg.index], value)
+	switch inst.mnemonic {
+	case "mov":
+		registers[dst_reg.index] = value
+	case "sub":
+		result := registers[dst_reg.index] - value
+		registers[dst_reg.index] = result
 
-	registers[dst_reg.index] = value
+		update_flags(flags, result)
+	case "add":
+		result := registers[dst_reg.index] + value
+		registers[dst_reg.index] = result
+
+		update_flags(flags, result)
+	case "cmp":
+		update_flags(flags, registers[dst_reg.index] - value)
+	case:
+		fmt.panicf("expected mov, sub, add or cmp, got %v in %v", inst.mnemonic, inst)
+	}
+
+	new_result := registers[dst_reg.index]
+	new_flags := flags^
+
+	fmt.printf(" ;")
+
+	if old_result != new_result {
+		fmt.printf(" %s:%#x->%#x", dst, old_result, new_result)
+	}
+
+	if old_flags != new_flags {
+		fmt.printf(" flags:%s->%s", format_flags(old_flags), format_flags(new_flags))
+	}
 }
 
 decode_instruction :: proc(reader: ^bytes.Reader) -> (inst: Instruction, err: io.Error) {
@@ -329,13 +396,14 @@ main :: proc() {
 	reader: bytes.Reader
 	bytes.reader_init(&reader, data)
 	registers: Registers
+	flags: Flags
 
 	for {
 		inst := decode_instruction(&reader) or_break
 
 		if inst.mnemonic != "" {
 			print_instruction(inst)
-			if exec do execute_instruction(&registers, inst)
+			if exec do execute_instruction(&registers, &flags, inst)
 			fmt.println()
 		}
 
@@ -347,7 +415,12 @@ main :: proc() {
 
 		for index in register_print_order {
 			value := registers[index]
+			if value == 0 do continue
 			fmt.printfln("      %s: 0x%04x (%d)", register_name({index, true}), value, value)
+		}
+
+		if flags != {} {
+			fmt.printfln("   flags: %s", format_flags(flags))
 		}
 	}
 }
