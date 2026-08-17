@@ -105,7 +105,7 @@ read_data :: proc(reader: ^bytes.Reader, lo: byte, wide: bool) -> (data: i16, er
 decode_rm :: proc(
 	reader: ^bytes.Reader,
 	mod_reg_rm: ModRegRm,
-	w_field: byte,
+	wide: bool,
 ) -> (
 	op: Operand,
 	err: io.Error,
@@ -126,7 +126,7 @@ decode_rm :: proc(
 
 		op = EffectiveAddress{EABase(mod_reg_rm.rm_field), transmute(i16)disp}
 	case 0b11:
-		op = Register{RegisterIndex(mod_reg_rm.rm_field), w_field == 0b1}
+		op = Register{RegisterIndex(mod_reg_rm.rm_field), wide}
 	}
 
 	return
@@ -179,10 +179,10 @@ decode_instruction :: proc(reader: ^bytes.Reader) -> (inst: Instruction, err: io
 	   b0 & 0b11111100 == 0b00101000 {
 		mod_reg_rm := transmute(ModRegRm)b1
 
-		w_field := b0 & 0b1
+		wide := b0 & 0b1 == 0b1
 
-		reg: Operand = Register{RegisterIndex(mod_reg_rm.reg_field), w_field == 0b1}
-		rm := decode_rm(reader, mod_reg_rm, w_field) or_return
+		reg: Operand = Register{RegisterIndex(mod_reg_rm.reg_field), wide}
+		rm := decode_rm(reader, mod_reg_rm, wide) or_return
 
 		dst, src := rm, reg
 		if b0 & 0b00000010 != 0b00000000 {
@@ -191,56 +191,56 @@ decode_instruction :: proc(reader: ^bytes.Reader) -> (inst: Instruction, err: io
 
 		opcode := b0 & 0b11111100 == 0b10001000 ? "mov" : arith_mnemonics[(b0 >> 3) & 0b111]
 
-		inst = {opcode, dst, src, w_field == 0b1}
+		inst = {opcode, dst, src, wide}
 	} else if b0 & 0b11110000 == 0b10110000 {
-		w_field := (b0 >> 3) & 1
-		reg := Register{RegisterIndex(b0 & 0b111), w_field == 0b1}
+		wide := (b0 >> 3) & 0b1 == 0b1
+		reg := Register{RegisterIndex(b0 & 0b111), wide}
 
-		data := read_data(reader, b1, w_field == 0b1) or_return
+		data := read_data(reader, b1, wide) or_return
 
-		inst = {"mov", reg, Immediate(data), w_field == 0b1}
+		inst = {"mov", reg, Immediate(data), wide}
 	} else if b0 & 0b11111100 == 0b10000000 {
 		mod_reg_rm := transmute(ModRegRm)b1
 
-		w_field := b0 & 0b1
-		s_field := (b0 >> 1) & 0b1
+		wide := b0 & 0b1 == 0b1
+		sign_extend := (b0 >> 1) & 0b1 == 0b1
 
-		rm := decode_rm(reader, mod_reg_rm, w_field) or_return
+		rm := decode_rm(reader, mod_reg_rm, wide) or_return
 
 		b4 := bytes.reader_read_byte(reader) or_return
-		data := read_data(reader, b4, s_field == 0b0 && w_field == 0b1) or_return
+		data := read_data(reader, b4, !sign_extend && wide) or_return
 
-		inst = {arith_mnemonics[mod_reg_rm.reg_field], rm, Immediate(data), w_field == 0b1}
+		inst = {arith_mnemonics[mod_reg_rm.reg_field], rm, Immediate(data), wide}
 	} else if b0 & 0b11111110 == 0b11000110 {
 		mod_reg_rm := transmute(ModRegRm)b1
 
-		w_field := b0 & 0b1
+		wide := b0 & 0b1 == 0b1
 
-		rm := decode_rm(reader, mod_reg_rm, w_field) or_return
+		rm := decode_rm(reader, mod_reg_rm, wide) or_return
 
 		b2 := bytes.reader_read_byte(reader) or_return
-		data := read_data(reader, b2, w_field == 0b1) or_return
+		data := read_data(reader, b2, wide) or_return
 
-		inst = {"mov", rm, Immediate(data), w_field == 0b1}
+		inst = {"mov", rm, Immediate(data), wide}
 	} else if b0 & 0b11111110 == 0b00000100 ||
 	   b0 & 0b11111110 == 0b00101100 ||
 	   b0 & 0b11111110 == 0b00111100 {
-		w_field := b0 & 0b1
+		wide := b0 & 0b1 == 0b1
 
-		data := read_data(reader, b1, w_field == 0b1) or_return
+		data := read_data(reader, b1, wide) or_return
 
-		inst = {arith_mnemonics[(b0 >> 3) & 0b111], Register{0, w_field == 0b1}, Immediate(data), w_field == 0b1}
+		inst = {arith_mnemonics[(b0 >> 3) & 0b111], Register{0, wide}, Immediate(data), wide}
 	} else if b0 & 0b11111100 == 0b10100000 {
 		b2 := bytes.reader_read_byte(reader) or_return
 
-		w_field := b0 & 0b1
+		wide := b0 & 0b1 == 0b1
 		addr := DirectAddress(u16(b2) << 8 | u16(b1))
-		acc := Register{0, w_field == 0b1}
+		acc := Register{0, wide}
 
 		if b0 & 0b00000010 == 0b00000000 {
-			inst = {"mov", acc, addr, w_field == 0b1}
+			inst = {"mov", acc, addr, wide}
 		} else {
-			inst = {"mov", addr, acc, w_field == 0b1}
+			inst = {"mov", addr, acc, wide}
 		}
 	} else if mnemonic, is_jump := jump_mnemonics[b0]; is_jump {
 		inst = {mnemonic, JumpOffset(i8(b1)), nil, false}
