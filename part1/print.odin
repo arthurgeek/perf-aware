@@ -39,6 +39,34 @@ format_flags :: proc(flags: Flags) -> string {
 	return strings.to_string(sb)
 }
 
+print_trace :: proc(old, new: Cpu) {
+	fmt.printf(" ;")
+
+	for value, index in new.registers {
+		if old.registers[index] != value {
+			fmt.printf(" %s:%#x->%#x", register_name({RegisterIndex(index), true}), old.registers[index], value)
+		}
+	}
+
+	if old.flags != new.flags {
+		fmt.printf(" flags:%s->%s", format_flags(old.flags), format_flags(new.flags))
+	}
+}
+
+print_final_registers :: proc(cpu: Cpu) {
+	fmt.println("\nFinal registers:")
+
+	for index in register_print_order {
+		value := cpu.registers[index]
+		if value == 0 do continue
+		fmt.printfln("      %s: 0x%04x (%d)", register_name({index, true}), value, value)
+	}
+
+	if cpu.flags != {} {
+		fmt.printfln("   flags: %s", format_flags(cpu.flags))
+	}
+}
+
 print_instruction :: proc(inst: Instruction) {
 	dst := format_operand(inst.dst)
 

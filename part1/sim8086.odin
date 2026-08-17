@@ -41,24 +41,18 @@ main :: proc() {
 
 		if inst.op != .none {
 			print_instruction(inst)
-			if exec do execute_instruction(&cpu, inst)
+
+			if exec {
+				old := cpu
+				execute_instruction(&cpu, inst)
+				print_trace(old, cpu)
+			}
+
 			fmt.println()
 		}
 
 		free_all(context.temp_allocator)
 	}
 
-	if exec {
-		fmt.println("\nFinal registers:")
-
-		for index in register_print_order {
-			value := cpu.registers[index]
-			if value == 0 do continue
-			fmt.printfln("      %s: 0x%04x (%d)", register_name({index, true}), value, value)
-		}
-
-		if cpu.flags != {} {
-			fmt.printfln("   flags: %s", format_flags(cpu.flags))
-		}
-	}
+	if exec do print_final_registers(cpu)
 }
