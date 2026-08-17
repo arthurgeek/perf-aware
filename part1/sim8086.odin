@@ -30,33 +30,62 @@ reg_encoding := [?][2]string {
 // natural order for the final dump: ax, bx, cx, dx — not encoding order
 register_print_order := [?]RegisterIndex{0b000, 0b011, 0b001, 0b010, 0b100, 0b101, 0b110, 0b111}
 
-arith_mnemonics := [8]string {
-	0b000 = "add",
-	0b101 = "sub",
-	0b111 = "cmp",
+// enum value names are the mnemonics: %v prints them directly
+Op :: enum {
+	none,
+	mov,
+	add,
+	sub,
+	cmp,
+	jo,
+	jno,
+	jb,
+	jnb,
+	je,
+	jne,
+	jbe,
+	ja,
+	js,
+	jns,
+	jp,
+	jnp,
+	jl,
+	jnl,
+	jle,
+	jg,
+	loopnz,
+	loopz,
+	loop,
+	jcxz,
 }
 
-jump_mnemonics := map[byte]string {
-	0b01110000 = "jo",
-	0b01110001 = "jno",
-	0b01110010 = "jb",
-	0b01110011 = "jnb",
-	0b01110100 = "je",
-	0b01110101 = "jne",
-	0b01110110 = "jbe",
-	0b01110111 = "ja",
-	0b01111000 = "js",
-	0b01111001 = "jns",
-	0b01111010 = "jp",
-	0b01111011 = "jnp",
-	0b01111100 = "jl",
-	0b01111101 = "jnl",
-	0b01111110 = "jle",
-	0b01111111 = "jg",
-	0b11100000 = "loopnz",
-	0b11100001 = "loopz",
-	0b11100010 = "loop",
-	0b11100011 = "jcxz",
+arith_ops := [8]Op {
+	0b000 = .add,
+	0b101 = .sub,
+	0b111 = .cmp,
+}
+
+jump_ops := map[byte]Op {
+	0b01110000 = .jo,
+	0b01110001 = .jno,
+	0b01110010 = .jb,
+	0b01110011 = .jnb,
+	0b01110100 = .je,
+	0b01110101 = .jne,
+	0b01110110 = .jbe,
+	0b01110111 = .ja,
+	0b01111000 = .js,
+	0b01111001 = .jns,
+	0b01111010 = .jp,
+	0b01111011 = .jnp,
+	0b01111100 = .jl,
+	0b01111101 = .jnl,
+	0b01111110 = .jle,
+	0b01111111 = .jg,
+	0b11100000 = .loopnz,
+	0b11100001 = .loopz,
+	0b11100010 = .loop,
+	0b11100011 = .jcxz,
 }
 
 RegisterIndex :: distinct byte
@@ -86,10 +115,10 @@ Operand :: union {
 }
 
 Instruction :: struct {
-	mnemonic: string,
-	dst:      Operand,
-	src:      Operand,
-	wide:     bool,
+	op:   Op,
+	dst:  Operand,
+	src:  Operand,
+	wide: bool,
 }
 
 Flag :: enum {
@@ -201,7 +230,7 @@ print_instruction :: proc(inst: Instruction) {
 	}
 
 	if inst.src == nil {
-		fmt.printf("%s %s", inst.mnemonic, dst)
+		fmt.printf("%v %s", inst.op, dst)
 	} else {
 		src := format_operand(inst.src)
 
@@ -209,7 +238,7 @@ print_instruction :: proc(inst: Instruction) {
 			src = fmt.tprintf("%d", u16(imm))
 		}
 
-		fmt.printf("%s %s, %s", inst.mnemonic, dst, src)
+		fmt.printf("%v %s, %s", inst.op, dst, src)
 	}
 }
 
@@ -238,23 +267,43 @@ execute_instruction :: proc(registers: ^Registers, flags: ^Flags, inst: Instruct
 	old_result := registers[dst_reg.index]
 	old_flags := flags^
 
-	switch inst.mnemonic {
-	case "mov":
+	switch inst.op {
+	case .mov:
 		registers[dst_reg.index] = value
-	case "sub":
+	case .sub:
 		result := registers[dst_reg.index] - value
 		registers[dst_reg.index] = result
 
 		update_flags(flags, result)
-	case "add":
+	case .add:
 		result := registers[dst_reg.index] + value
 		registers[dst_reg.index] = result
 
 		update_flags(flags, result)
-	case "cmp":
+	case .cmp:
 		update_flags(flags, registers[dst_reg.index] - value)
-	case:
-		fmt.panicf("expected mov, sub, add or cmp, got %v in %v", inst.mnemonic, inst)
+	case .none,
+	     .jo,
+	     .jno,
+	     .jb,
+	     .jnb,
+	     .je,
+	     .jne,
+	     .jbe,
+	     .ja,
+	     .js,
+	     .jns,
+	     .jp,
+	     .jnp,
+	     .jl,
+	     .jnl,
+	     .jle,
+	     .jg,
+	     .loopnz,
+	     .loopz,
+	     .loop,
+	     .jcxz:
+		fmt.panicf("cannot execute %v in %v", inst.op, inst)
 	}
 
 	new_result := registers[dst_reg.index]
@@ -294,9 +343,9 @@ decode_instruction :: proc(reader: ^bytes.Reader) -> (inst: Instruction, err: io
 		}
 
 		// 100010dw is mov; otherwise bits 5-3 select add/sub/cmp
-		opcode := b0 & 0b11111100 == 0b10001000 ? "mov" : arith_mnemonics[(b0 >> 3) & 0b111]
+		op := b0 & 0b11111100 == 0b10001000 ? Op.mov : arith_ops[(b0 >> 3) & 0b111]
 
-		inst = {opcode, dst, src, wide}
+		inst = {op, dst, src, wide}
 	} else if b0 & 0b11110000 == 0b10110000 {
 		// mov: immediate to register
 		wide := (b0 >> 3) & 0b1 == 0b1
@@ -304,7 +353,7 @@ decode_instruction :: proc(reader: ^bytes.Reader) -> (inst: Instruction, err: io
 
 		data := read_data(reader, b1, wide) or_return
 
-		inst = {"mov", reg, Immediate(data), wide}
+		inst = {.mov, reg, Immediate(data), wide}
 	} else if b0 & 0b11111100 == 0b10000000 {
 		// add/sub/cmp: immediate to register/memory
 		mod_reg_rm := transmute(ModRegRm)b1
@@ -318,7 +367,7 @@ decode_instruction :: proc(reader: ^bytes.Reader) -> (inst: Instruction, err: io
 		data := read_data(reader, b4, !sign_extend && wide) or_return
 
 		// reg field selects add/sub/cmp
-		inst = {arith_mnemonics[mod_reg_rm.reg_field], rm, Immediate(data), wide}
+		inst = {arith_ops[mod_reg_rm.reg_field], rm, Immediate(data), wide}
 	} else if b0 & 0b11111110 == 0b11000110 {
 		// mov: immediate to register/memory
 		mod_reg_rm := transmute(ModRegRm)b1
@@ -330,7 +379,7 @@ decode_instruction :: proc(reader: ^bytes.Reader) -> (inst: Instruction, err: io
 		b2 := bytes.reader_read_byte(reader) or_return
 		data := read_data(reader, b2, wide) or_return
 
-		inst = {"mov", rm, Immediate(data), wide}
+		inst = {.mov, rm, Immediate(data), wide}
 	} else if b0 & 0b11111110 == 0b00000100 ||
 	   b0 & 0b11111110 == 0b00101100 ||
 	   b0 & 0b11111110 == 0b00111100 {
@@ -340,7 +389,7 @@ decode_instruction :: proc(reader: ^bytes.Reader) -> (inst: Instruction, err: io
 		data := read_data(reader, b1, wide) or_return
 
 		// bits 5-3 select add/sub/cmp
-		inst = {arith_mnemonics[(b0 >> 3) & 0b111], Register{0, wide}, Immediate(data), wide}
+		inst = {arith_ops[(b0 >> 3) & 0b111], Register{0, wide}, Immediate(data), wide}
 	} else if b0 & 0b11111100 == 0b10100000 {
 		// mov: memory to/from accumulator
 		b2 := bytes.reader_read_byte(reader) or_return
@@ -351,13 +400,13 @@ decode_instruction :: proc(reader: ^bytes.Reader) -> (inst: Instruction, err: io
 
 		// d bit inverted here: 0 means accumulator is the destination
 		if b0 & 0b00000010 == 0b00000000 {
-			inst = {"mov", acc, addr, wide}
+			inst = {.mov, acc, addr, wide}
 		} else {
-			inst = {"mov", addr, acc, wide}
+			inst = {.mov, addr, acc, wide}
 		}
-	} else if mnemonic, is_jump := jump_mnemonics[b0]; is_jump {
+	} else if op, is_jump := jump_ops[b0]; is_jump {
 		// conditional jumps and loops
-		inst = {mnemonic, JumpOffset(i8(b1)), nil, false}
+		inst = {op, JumpOffset(i8(b1)), nil, false}
 	} else {
 		fmt.printfln("unsupported first byte: %08b", b0)
 	}
@@ -401,7 +450,7 @@ main :: proc() {
 	for {
 		inst := decode_instruction(&reader) or_break
 
-		if inst.mnemonic != "" {
+		if inst.op != .none {
 			print_instruction(inst)
 			if exec do execute_instruction(&registers, &flags, inst)
 			fmt.println()
