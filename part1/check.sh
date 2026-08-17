@@ -50,6 +50,12 @@ normalize_transcript() {
     tr -d '\r' | sed -e '/^--- .*---$/d' -e 's/[[:space:]]*$//' -e '/^$/d'
 }
 
+# Course transcripts from before listing 48 predate ip tracking; drop our ip
+# output when comparing against them (trace segments and the final dump line).
+strip_ip() {
+    sed -e 's/ ip:0x[0-9a-f]*->0x[0-9a-f]*//' -e '/^[[:space:]]*ip: 0x/d'
+}
+
 passed=0
 failed=0
 
@@ -83,15 +89,23 @@ for asm in "${listings[@]}"; do
     # Simulation check: only for listings that ship a reference transcript.
     txt=$listings_dir/$name.txt
     if [ -f "$txt" ]; then
-        exec_out=$build/$name.exec.txt
-        "$DECODER" -exec "$ref" >"$exec_out"
+        expected=$build/$name.expected.txt
+        actual=$build/$name.actual.txt
 
-        if diff -q <(normalize_transcript <"$txt") <(normalize_transcript <"$exec_out") >/dev/null; then
+        "$DECODER" -exec "$ref" | normalize_transcript >"$actual"
+        normalize_transcript <"$txt" >"$expected"
+
+        if ! grep -q 'ip:' "$expected"; then
+            strip_ip <"$actual" >"$actual.noip"
+            actual=$actual.noip
+        fi
+
+        if diff -q "$expected" "$actual" >/dev/null; then
             echo "PASS $name (exec)"
             passed=$((passed + 1))
         else
             echo "FAIL $name (exec)"
-            diff -u -L expected -L simulated <(normalize_transcript <"$txt") <(normalize_transcript <"$exec_out") \
+            diff -u -L expected -L simulated "$expected" "$actual" \
                 | tail -n +3 | sed 's/^/    /'
             failed=$((failed + 1))
         fi
