@@ -64,33 +64,36 @@ read_data :: proc(reader: ^bytes.Reader, lo: byte, wide: bool) -> (data: i16, er
 	return i16(hi) << 8 | i16(lo), .None
 }
 
-decode_rm :: proc(reader: ^bytes.Reader, mod_reg_rm: ModRegRm, w_field: byte) -> Maybe(string) {
-	rm_value: string
-
-	if mod_reg_rm.mod_field == 0b11 {
-		rm_value = reg_encoding[mod_reg_rm.rm_field][w_field]
-	} else if mod_reg_rm.mod_field == 0b00 {
+decode_rm :: proc(
+	reader: ^bytes.Reader,
+	mod_reg_rm: ModRegRm,
+	w_field: byte,
+) -> (
+	rm_value: string,
+	err: io.Error,
+) {
+	switch mod_reg_rm.mod_field {
+	case 0b00:
 		if mod_reg_rm.rm_field == 0b110 {
-			addr, aerr := read_u16(reader)
-			if aerr != .None do return nil
+			addr := read_u16(reader) or_return
 
 			rm_value = fmt.tprintf("[%d]", addr)
 		} else {
 			rm_value = fmt.tprintf("[%s]", rm_encoding[mod_reg_rm.rm_field])
 		}
-	} else if mod_reg_rm.mod_field == 0b01 {
-		b2, e2 := bytes.reader_read_byte(reader)
-		if e2 != .None do return nil
+	case 0b01:
+		disp := bytes.reader_read_byte(reader) or_return
 
-		rm_value = fmt.tprintf("[%s + %d]", rm_encoding[mod_reg_rm.rm_field], i16(i8(b2)))
-	} else if mod_reg_rm.mod_field == 0b10 {
-		disp, derr := read_u16(reader)
-		if derr != .None do return nil
+		rm_value = fmt.tprintf("[%s + %d]", rm_encoding[mod_reg_rm.rm_field], i16(i8(disp)))
+	case 0b10:
+		disp := read_u16(reader) or_return
 
 		rm_value = fmt.tprintf("[%s + %d]", rm_encoding[mod_reg_rm.rm_field], transmute(i16)disp)
+	case 0b11:
+		rm_value = reg_encoding[mod_reg_rm.rm_field][w_field]
 	}
 
-	return rm_value
+	return
 }
 
 main :: proc() {
@@ -126,11 +129,7 @@ main :: proc() {
 			left, right: string
 
 			reg_value := reg_encoding[mod_reg_rm.reg_field][w_field]
-			rm_value, ok := decode_rm(&reader, mod_reg_rm, w_field).?
-
-			if !ok {
-				break
-			}
+			rm_value := decode_rm(&reader, mod_reg_rm, w_field) or_break
 
 			if b0 & 0b00000010 == 0b00000000 {
 				right = reg_value
@@ -165,15 +164,8 @@ main :: proc() {
 
 			w_field := b0 & 0b1
 			s_field := (b0 >> 1) & 0b1
-			left, right: string
-			rm_value: string
-			ok: bool
 
-			rm_value, ok = decode_rm(&reader, mod_reg_rm, w_field).?
-
-			if !ok {
-				break
-			}
+			rm_value := decode_rm(&reader, mod_reg_rm, w_field) or_break
 
 			if mod_reg_rm.mod_field != 0b11 {
 				rm_value = fmt.tprintf("%s %s", w_field == 1 ? "word" : "byte", rm_value)
@@ -198,11 +190,7 @@ main :: proc() {
 
 			w_field := b0 & 0b1
 
-			rm_value, ok := decode_rm(&reader, mod_reg_rm, w_field).?
-
-			if !ok {
-				break
-			}
+			rm_value := decode_rm(&reader, mod_reg_rm, w_field) or_break
 
 			if mod_reg_rm.mod_field != 0b11 {
 				rm_value = fmt.tprintf("%s %s", w_field == 1 ? "word" : "byte", rm_value)
