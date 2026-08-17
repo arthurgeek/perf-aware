@@ -55,6 +55,38 @@ jump_mnemonics := map[byte]string {
 	0b11100011 = "jcxz",
 }
 
+RegisterIndex :: distinct byte
+EABase :: distinct byte
+
+Register :: struct {
+	index: RegisterIndex,
+	wide:  bool,
+}
+
+EffectiveAddress :: struct {
+	base: EABase,
+	disp: i16,
+}
+
+DirectAddress :: distinct u16
+Immediate :: distinct i16
+JumpOffset :: distinct i8
+
+Operand :: union {
+	Register,
+	EffectiveAddress,
+	DirectAddress,
+	Immediate,
+	JumpOffset,
+}
+
+Instruction :: struct {
+	mnemonic: string,
+	dst:      Operand,
+	src:      Operand,
+	wide:     bool,
+}
+
 read_u16 :: proc(reader: ^bytes.Reader) -> (v: u16, err: io.Error) {
 	lo := bytes.reader_read_byte(reader) or_return
 	hi := bytes.reader_read_byte(reader) or_return
@@ -75,31 +107,66 @@ decode_rm :: proc(
 	mod_reg_rm: ModRegRm,
 	w_field: byte,
 ) -> (
-	rm_value: string,
+	op: Operand,
 	err: io.Error,
 ) {
 	switch mod_reg_rm.mod_field {
 	case 0b00:
 		if mod_reg_rm.rm_field == 0b110 {
-			addr := read_u16(reader) or_return
-
-			rm_value = fmt.tprintf("[%d]", addr)
+			op = DirectAddress(read_u16(reader) or_return)
 		} else {
-			rm_value = fmt.tprintf("[%s]", rm_encoding[mod_reg_rm.rm_field])
+			op = EffectiveAddress{EABase(mod_reg_rm.rm_field), 0}
 		}
 	case 0b01:
 		disp := bytes.reader_read_byte(reader) or_return
 
-		rm_value = fmt.tprintf("[%s + %d]", rm_encoding[mod_reg_rm.rm_field], i16(i8(disp)))
+		op = EffectiveAddress{EABase(mod_reg_rm.rm_field), i16(i8(disp))}
 	case 0b10:
 		disp := read_u16(reader) or_return
 
-		rm_value = fmt.tprintf("[%s + %d]", rm_encoding[mod_reg_rm.rm_field], transmute(i16)disp)
+		op = EffectiveAddress{EABase(mod_reg_rm.rm_field), transmute(i16)disp}
 	case 0b11:
-		rm_value = reg_encoding[mod_reg_rm.rm_field][w_field]
+		op = Register{RegisterIndex(mod_reg_rm.rm_field), w_field == 0b1}
 	}
 
 	return
+}
+
+format_operand :: proc(op: Operand) -> string {
+	switch v in op {
+	case Register:
+		return reg_encoding[v.index][v.wide ? 1 : 0]
+	case EffectiveAddress:
+		if v.disp == 0 do return fmt.tprintf("[%s]", rm_encoding[v.base])
+		if v.disp < 0 do return fmt.tprintf("[%s - %d]", rm_encoding[v.base], -i32(v.disp))
+		return fmt.tprintf("[%s + %d]", rm_encoding[v.base], v.disp)
+	case DirectAddress:
+		return fmt.tprintf("[%d]", v)
+	case Immediate:
+		return fmt.tprintf("%d", v)
+	case JumpOffset:
+		return fmt.tprintf("$%+d", i16(v) + 2)
+	}
+
+	return ""
+}
+
+print_instruction :: proc(inst: Instruction) {
+	dst := format_operand(inst.dst)
+
+	_, src_is_immediate := inst.src.(Immediate)
+	_, dst_is_ea := inst.dst.(EffectiveAddress)
+	_, dst_is_direct := inst.dst.(DirectAddress)
+
+	if src_is_immediate && (dst_is_ea || dst_is_direct) {
+		dst = fmt.tprintf("%s %s", inst.wide ? "word" : "byte", dst)
+	}
+
+	if inst.src == nil {
+		fmt.printfln("%s %s", inst.mnemonic, dst)
+	} else {
+		fmt.printfln("%s %s,%s", inst.mnemonic, dst, format_operand(inst.src))
+	}
 }
 
 main :: proc() {
@@ -132,60 +199,48 @@ main :: proc() {
 			mod_reg_rm := transmute(ModRegRm)b1
 
 			w_field := b0 & 0b1
-			left, right: string
 
-			reg_value := reg_encoding[mod_reg_rm.reg_field][w_field]
-			rm_value := decode_rm(&reader, mod_reg_rm, w_field) or_break
+			reg: Operand = Register{RegisterIndex(mod_reg_rm.reg_field), w_field == 0b1}
+			rm := decode_rm(&reader, mod_reg_rm, w_field) or_break
 
-			if b0 & 0b00000010 == 0b00000000 {
-				right = reg_value
-				left = rm_value
-			} else {
-				right = rm_value
-				left = reg_value
+			dst, src := rm, reg
+			if b0 & 0b00000010 != 0b00000000 {
+				dst, src = reg, rm
 			}
 
 			opcode := b0 & 0b11111100 == 0b10001000 ? "mov" : arith_mnemonics[(b0 >> 3) & 0b111]
 
-			fmt.printfln("%s %s,%s", opcode, left, right)
+			print_instruction({opcode, dst, src, w_field == 0b1})
 		} else if b0 & 0b11110000 == 0b10110000 {
 			w_field := (b0 >> 3) & 1
-			reg := b0 & 0b111
+			reg := Register{RegisterIndex(b0 & 0b111), w_field == 0b1}
 
 			data := read_data(&reader, b1, w_field == 0b1) or_break
 
-			fmt.printfln("%s %s,%d", "mov", reg_encoding[reg][w_field], data)
+			print_instruction({"mov", reg, Immediate(data), w_field == 0b1})
 		} else if b0 & 0b11111100 == 0b10000000 {
 			mod_reg_rm := transmute(ModRegRm)b1
 
 			w_field := b0 & 0b1
 			s_field := (b0 >> 1) & 0b1
 
-			rm_value := decode_rm(&reader, mod_reg_rm, w_field) or_break
-
-			if mod_reg_rm.mod_field != 0b11 {
-				rm_value = fmt.tprintf("%s %s", w_field == 1 ? "word" : "byte", rm_value)
-			}
+			rm := decode_rm(&reader, mod_reg_rm, w_field) or_break
 
 			b4 := bytes.reader_read_byte(&reader) or_break
 			data := read_data(&reader, b4, s_field == 0b0 && w_field == 0b1) or_break
 
-			fmt.printfln("%s %s,%d", arith_mnemonics[mod_reg_rm.reg_field], rm_value, data)
+			print_instruction({arith_mnemonics[mod_reg_rm.reg_field], rm, Immediate(data), w_field == 0b1})
 		} else if b0 & 0b11111110 == 0b11000110 {
 			mod_reg_rm := transmute(ModRegRm)b1
 
 			w_field := b0 & 0b1
 
-			rm_value := decode_rm(&reader, mod_reg_rm, w_field) or_break
-
-			if mod_reg_rm.mod_field != 0b11 {
-				rm_value = fmt.tprintf("%s %s", w_field == 1 ? "word" : "byte", rm_value)
-			}
+			rm := decode_rm(&reader, mod_reg_rm, w_field) or_break
 
 			b2 := bytes.reader_read_byte(&reader) or_break
 			data := read_data(&reader, b2, w_field == 0b1) or_break
 
-			fmt.printfln("mov %s,%d", rm_value, data)
+			print_instruction({"mov", rm, Immediate(data), w_field == 0b1})
 		} else if b0 & 0b11111110 == 0b00000100 ||
 		   b0 & 0b11111110 == 0b00101100 ||
 		   b0 & 0b11111110 == 0b00111100 {
@@ -193,21 +248,21 @@ main :: proc() {
 
 			data := read_data(&reader, b1, w_field == 0b1) or_break
 
-			fmt.printfln("%s %s,%d", arith_mnemonics[(b0 >> 3) & 0b111], reg_encoding[0][w_field], data)
+			print_instruction({arith_mnemonics[(b0 >> 3) & 0b111], Register{0, w_field == 0b1}, Immediate(data), w_field == 0b1})
 		} else if b0 & 0b11111100 == 0b10100000 {
 			b2 := bytes.reader_read_byte(&reader) or_break
 
 			w_field := b0 & 0b1
-			addr := u16(b2) << 8 | u16(b1)
-			acc := reg_encoding[0][w_field]
+			addr := DirectAddress(u16(b2) << 8 | u16(b1))
+			acc := Register{0, w_field == 0b1}
 
 			if b0 & 0b00000010 == 0b00000000 {
-				fmt.printfln("mov %s,[%d]", acc, addr)
+				print_instruction({"mov", acc, addr, w_field == 0b1})
 			} else {
-				fmt.printfln("mov [%d],%s", addr, acc)
+				print_instruction({"mov", addr, acc, w_field == 0b1})
 			}
 		} else if mnemonic, is_jump := jump_mnemonics[b0]; is_jump {
-			fmt.printfln("%s $%+d", mnemonic, i16(i8(b1)) + 2)
+			print_instruction({mnemonic, JumpOffset(i8(b1)), nil, false})
 		} else {
 			fmt.printfln("unsupported first byte: %08b", b0)
 		}
