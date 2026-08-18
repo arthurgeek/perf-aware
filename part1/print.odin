@@ -6,6 +6,14 @@ import "core:strings"
 // natural order for the final dump: ax, bx, cx, dx — not encoding order
 register_print_order := [?]RegisterIndex{0b000, 0b011, 0b001, 0b010, 0b100, 0b101, 0b110, 0b111}
 
+flag_letters := [Flag]string {
+	.Carry  = "C",
+	.Parity = "P",
+	.Aux    = "A",
+	.Zero   = "Z",
+	.Sign   = "S",
+}
+
 register_name :: proc(r: Register) -> string {
 	return reg_encoding[r.index][r.wide ? 1 : 0]
 }

@@ -16,14 +16,6 @@ Flag :: enum {
 
 Flags :: bit_set[Flag;u16]
 
-flag_letters := [Flag]string {
-	.Carry  = "C",
-	.Parity = "P",
-	.Aux    = "A",
-	.Zero   = "Z",
-	.Sign   = "S",
-}
-
 Cpu :: struct {
 	registers: Registers,
 	flags:     Flags,
