@@ -1,11 +1,15 @@
 package sim8086
 
 import "core:fmt"
+import "core:math/bits"
 
 Registers :: distinct [8]u16
 
+// declared in the order the reference prints them
 Flag :: enum {
+	Carry,
 	Parity,
+	Aux,
 	Zero,
 	Sign,
 }
@@ -13,7 +17,9 @@ Flag :: enum {
 Flags :: bit_set[Flag;u16]
 
 flag_letters := [Flag]string {
+	.Carry  = "C",
 	.Parity = "P",
+	.Aux    = "A",
 	.Zero   = "Z",
 	.Sign   = "S",
 }
@@ -23,9 +29,12 @@ Cpu :: struct {
 	flags:     Flags,
 }
 
-update_flags :: proc(flags: ^Flags, result: u16) {
-	flags^ -= {.Zero, .Sign, .Parity}
-	if result == 0 do flags^ += {.Zero, .Parity}
+update_flags :: proc(flags: ^Flags, result: u16, carry, aux: bool) {
+	flags^ = {}
+	if carry do flags^ += {.Carry}
+	if bits.count_ones(u8(result)) % 2 == 0 do flags^ += {.Parity}
+	if aux do flags^ += {.Aux}
+	if result == 0 do flags^ += {.Zero}
 	if i16(result) < 0 do flags^ += {.Sign}
 }
 
@@ -48,16 +57,23 @@ execute_instruction :: proc(cpu: ^Cpu, inst: Instruction) {
 	case .mov:
 		cpu.registers[dst_reg.index] = value
 	case .add:
-		result := cpu.registers[dst_reg.index] + value
+		old := cpu.registers[dst_reg.index]
+		result := old + value
 		cpu.registers[dst_reg.index] = result
 
-		update_flags(&cpu.flags, result)
+		update_flags(
+			&cpu.flags,
+			result,
+			carry = u32(old) + u32(value) > 0xFFFF,
+			aux = (old & 0xF) + (value & 0xF) > 0xF,
+		)
 	case .sub, .cmp:
-		result := cpu.registers[dst_reg.index] - value
+		old := cpu.registers[dst_reg.index]
+		result := old - value
 		// cmp is sub without the writeback
 		if inst.op == .sub do cpu.registers[dst_reg.index] = result
 
-		update_flags(&cpu.flags, result)
+		update_flags(&cpu.flags, result, carry = value > old, aux = value & 0xF > old & 0xF)
 	case .none,
 	     .jo,
 	     .jno,
