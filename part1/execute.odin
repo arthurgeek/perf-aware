@@ -33,6 +33,7 @@ Cpu :: struct {
 
 ea_base_registers := [8][]RegisterIndex {
 	0b111 = {0b011},
+	0b010 = {0b101, 0b110},
 }
 
 effective_address :: proc(cpu: ^Cpu, ea: EffectiveAddress) -> u16 {

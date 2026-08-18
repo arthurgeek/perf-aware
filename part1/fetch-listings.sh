@@ -25,6 +25,8 @@ files=(
     listing_0049_conditional_jumps.txt
     listing_0051_memory_mov.asm
     listing_0051_memory_mov.txt
+    listing_0052_memory_add_loop.asm
+    listing_0052_memory_add_loop.txt
 )
 
 mkdir -p listings

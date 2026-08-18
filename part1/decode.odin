@@ -12,7 +12,7 @@ ModRegRm :: bit_field byte {
 	mod_field: byte | 2,
 }
 
-rm_encoding := [?]string{"bx + si", "bx + di", "bp + si", "bp + di", "si", "di", "bp", "bx"}
+rm_encoding := [?]string{"bx+si", "bx+di", "bp+si", "bp+di", "si", "di", "bp", "bx"}
 
 reg_encoding := [?][2]string {
 	{"al", "ax"},

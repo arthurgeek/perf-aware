@@ -85,7 +85,7 @@ print_instruction :: proc(inst: Instruction) {
 	_, dst_is_ea := inst.dst.(EffectiveAddress)
 	_, dst_is_direct := inst.dst.(DirectAddress)
 
-	if src_is_immediate && (dst_is_ea || dst_is_direct) {
+	if dst_is_ea || dst_is_direct {
 		dst = fmt.tprintf("%s %s", inst.wide ? "word" : "byte", dst)
 	}
 
