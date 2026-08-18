@@ -29,6 +29,8 @@ files=(
     listing_0052_memory_add_loop.txt
     listing_0053_add_loop_challenge.asm
     listing_0053_add_loop_challenge.txt
+    listing_0054_draw_rectangle.asm
+    listing_0054_draw_rectangle.txt
 )
 
 mkdir -p listings

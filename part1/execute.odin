@@ -40,10 +40,8 @@ read_memory :: proc(cpu: ^Cpu, addr: u16, wide: bool) -> u16 {
 }
 
 write_memory :: proc(cpu: ^Cpu, addr: u16, wide: bool, value: u16) {
-	fmt.assertf(wide, "byte-wide memory write unimplemented at %#x", addr)
-
 	cpu.memory[addr] = u8(value)
-	cpu.memory[addr + 1] = u8(value >> 8)
+	if wide do cpu.memory[addr + 1] = u8(value >> 8)
 }
 
 update_flags :: proc(flags: ^Flags, result: u16, carry, aux: bool) {

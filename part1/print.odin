@@ -102,8 +102,8 @@ print_instruction :: proc(inst: Instruction) {
 	} else {
 		src := format_operand(inst.src)
 
-		if src_is_immediate && inst.wide {
-			src = fmt.tprintf("%d", u16(imm))
+		if src_is_immediate {
+			src = fmt.tprintf("%d", inst.wide ? u16(imm) : u16(u8(imm)))
 		}
 
 		fmt.printf("%v %s, %s", inst.op, dst, src)
