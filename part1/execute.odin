@@ -27,6 +27,7 @@ flag_letters := [Flag]string {
 Cpu :: struct {
 	registers: Registers,
 	flags:     Flags,
+	ip:        u16,
 }
 
 update_flags :: proc(flags: ^Flags, result: u16, carry, aux: bool) {

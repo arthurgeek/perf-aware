@@ -44,8 +44,17 @@ print_trace :: proc(old, new: Cpu) {
 
 	for value, index in new.registers {
 		if old.registers[index] != value {
-			fmt.printf(" %s:%#x->%#x", register_name({RegisterIndex(index), true}), old.registers[index], value)
+			fmt.printf(
+				" %s:%#x->%#x",
+				register_name({RegisterIndex(index), true}),
+				old.registers[index],
+				value,
+			)
 		}
+	}
+
+	if old.ip != new.ip {
+		fmt.printf(" ip:%#x->%#x", old.ip, new.ip)
 	}
 
 	if old.flags != new.flags {
@@ -61,6 +70,8 @@ print_final_registers :: proc(cpu: Cpu) {
 		if value == 0 do continue
 		fmt.printfln("      %s: 0x%04x (%d)", register_name({index, true}), value, value)
 	}
+
+	fmt.printfln("      ip: 0x%04x (%d)", cpu.ip, cpu.ip)
 
 	if cpu.flags != {} {
 		fmt.printfln("   flags: %s", format_flags(cpu.flags))

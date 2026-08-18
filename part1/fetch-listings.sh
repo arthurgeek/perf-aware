@@ -19,6 +19,8 @@ files=(
     listing_0044_register_movs.txt
     listing_0046_add_sub_cmp.asm
     listing_0046_add_sub_cmp.txt
+    listing_0048_ip_register.asm
+    listing_0048_ip_register.txt
 )
 
 mkdir -p listings

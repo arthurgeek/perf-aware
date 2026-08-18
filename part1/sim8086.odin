@@ -37,13 +37,14 @@ main :: proc() {
 	cpu: Cpu
 
 	for {
+		old := cpu
 		inst := decode_instruction(&reader) or_break
+		cpu.ip = u16(reader.i)
 
 		if inst.op != .none {
 			print_instruction(inst)
 
 			if exec {
-				old := cpu
 				execute_instruction(&cpu, inst)
 				print_trace(old, cpu)
 			}
