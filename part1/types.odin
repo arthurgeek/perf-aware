@@ -46,8 +46,14 @@ reg_encoding := [8][2]string {
 rm_encoding := [8]string{"bx+si", "bx+di", "bp+si", "bp+di", "si", "di", "bp", "bx"}
 
 ea_base_registers := [8][]RegisterIndex {
-	0b010 = {0b101, 0b110},
-	0b111 = {0b011},
+	{0b011, 0b110},
+	{0b011, 0b111},
+	{0b101, 0b110},
+	{0b101, 0b111},
+	{0b110},
+	{0b111},
+	{0b101},
+	{0b011},
 }
 
 Register :: struct {

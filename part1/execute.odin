@@ -32,12 +32,9 @@ Cpu :: struct {
 }
 
 effective_address :: proc(cpu: ^Cpu, ea: EffectiveAddress) -> u16 {
-	base_registers := ea_base_registers[ea.base]
-	fmt.assertf(base_registers != nil, "unimplemented effective address base in %v", ea)
-
 	addr := u16(ea.disp)
 
-	for r in base_registers {
+	for r in ea_base_registers[ea.base] {
 		addr += cpu.registers[r]
 	}
 
