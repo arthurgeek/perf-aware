@@ -23,6 +23,8 @@ files=(
     listing_0048_ip_register.txt
     listing_0049_conditional_jumps.asm
     listing_0049_conditional_jumps.txt
+    listing_0051_memory_mov.asm
+    listing_0051_memory_mov.txt
 )
 
 mkdir -p listings

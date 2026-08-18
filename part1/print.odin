@@ -16,10 +16,10 @@ format_operand :: proc(op: Operand) -> string {
 		return register_name(v)
 	case EffectiveAddress:
 		if v.disp == 0 do return fmt.tprintf("[%s]", rm_encoding[v.base])
-		if v.disp < 0 do return fmt.tprintf("[%s - %d]", rm_encoding[v.base], -i32(v.disp))
-		return fmt.tprintf("[%s + %d]", rm_encoding[v.base], v.disp)
+		if v.disp < 0 do return fmt.tprintf("[%s-%d]", rm_encoding[v.base], -i32(v.disp))
+		return fmt.tprintf("[%s+%d]", rm_encoding[v.base], v.disp)
 	case DirectAddress:
-		return fmt.tprintf("[%d]", v)
+		return fmt.tprintf("[+%d]", v)
 	case Immediate:
 		return fmt.tprintf("%d", v)
 	case JumpOffset:

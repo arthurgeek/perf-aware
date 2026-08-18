@@ -28,6 +28,37 @@ Cpu :: struct {
 	registers: Registers,
 	flags:     Flags,
 	ip:        u16,
+	memory:    []u8,
+}
+
+ea_base_registers := [8][]RegisterIndex {
+	0b111 = {0b011},
+}
+
+effective_address :: proc(cpu: ^Cpu, ea: EffectiveAddress) -> u16 {
+	base_registers := ea_base_registers[ea.base]
+	fmt.assertf(base_registers != nil, "unimplemented effective address base in %v", ea)
+
+	addr := u16(ea.disp)
+
+	for r in base_registers {
+		addr += cpu.registers[r]
+	}
+
+	return addr
+}
+
+read_memory :: proc(cpu: ^Cpu, addr: u16, wide: bool) -> u16 {
+	fmt.assertf(wide, "byte-wide memory read unimplemented at %#x", addr)
+
+	return u16(cpu.memory[addr]) | u16(cpu.memory[addr + 1]) << 8
+}
+
+write_memory :: proc(cpu: ^Cpu, addr: u16, wide: bool, value: u16) {
+	fmt.assertf(wide, "byte-wide memory write unimplemented at %#x", addr)
+
+	cpu.memory[addr] = u8(value)
+	cpu.memory[addr + 1] = u8(value >> 8)
 }
 
 update_flags :: proc(flags: ^Flags, result: u16, carry, aux: bool) {
@@ -39,21 +70,38 @@ update_flags :: proc(flags: ^Flags, result: u16, carry, aux: bool) {
 	if i16(result) < 0 do flags^ += {.Sign}
 }
 
-operand_value :: proc(cpu: ^Cpu, op: Operand) -> u16 {
+operand_value :: proc(cpu: ^Cpu, op: Operand, wide: bool) -> u16 {
 	switch v in op {
 	case Immediate:
 		return u16(v)
 	case Register:
 		return cpu.registers[v.index]
-	case EffectiveAddress, DirectAddress, JumpOffset:
+	case EffectiveAddress:
+		return read_memory(cpu, effective_address(cpu, v), wide)
+	case DirectAddress:
+		return read_memory(cpu, u16(v), wide)
+	case JumpOffset:
 		fmt.panicf("cannot read %v as a source", op)
 	}
 	return 0
 }
 
+write_operand :: proc(cpu: ^Cpu, op: Operand, wide: bool, value: u16) {
+	switch v in op {
+	case Register:
+		cpu.registers[v.index] = value
+	case EffectiveAddress:
+		write_memory(cpu, effective_address(cpu, v), wide, value)
+	case DirectAddress:
+		write_memory(cpu, u16(v), wide, value)
+	case Immediate, JumpOffset:
+		fmt.panicf("cannot write to %v as a destination", op)
+	}
+}
+
 binary_operands :: proc(cpu: ^Cpu, inst: Instruction) -> (dst: RegisterIndex, old, value: u16) {
 	dst_reg := inst.dst.(Register)
-	return dst_reg.index, cpu.registers[dst_reg.index], operand_value(cpu, inst.src)
+	return dst_reg.index, cpu.registers[dst_reg.index], operand_value(cpu, inst.src, inst.wide)
 }
 
 execute_jump :: proc(cpu: ^Cpu, inst: Instruction, condition: bool) {
@@ -64,8 +112,7 @@ execute_jump :: proc(cpu: ^Cpu, inst: Instruction, condition: bool) {
 execute_instruction :: proc(cpu: ^Cpu, inst: Instruction) {
 	switch inst.op {
 	case .mov:
-		dst, _, value := binary_operands(cpu, inst)
-		cpu.registers[dst] = value
+		write_operand(cpu, inst.dst, inst.wide, operand_value(cpu, inst.src, inst.wide))
 	case .add:
 		dst, old, value := binary_operands(cpu, inst)
 		result := old + value

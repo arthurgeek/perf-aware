@@ -35,6 +35,8 @@ main :: proc() {
 	reader: bytes.Reader
 	bytes.reader_init(&reader, data)
 	cpu: Cpu
+	cpu.memory = make([]u8, 65536)
+	defer delete(cpu.memory)
 
 	for {
 		reader.i = i64(cpu.ip)
