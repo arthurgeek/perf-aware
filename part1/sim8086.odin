@@ -25,13 +25,18 @@ main :: proc() {
 
 	if !opts.exec do fmt.printfln("bits 16")
 
-	reader: bytes.Reader
-	bytes.reader_init(&reader, data)
 	cpu: Cpu
 	cpu.memory = make([]u8, 65536)
 	defer delete(cpu.memory)
 
-	for {
+	// load the program into the machine's memory: code and data share the
+	// address space, and fetch reads through the same bytes the program can write
+	program_len := copy(cpu.memory, data)
+
+	reader: bytes.Reader
+	bytes.reader_init(&reader, cpu.memory[:program_len])
+
+	for cpu.ip < u16(program_len) {
 		reader.i = i64(cpu.ip)
 
 		old := cpu
