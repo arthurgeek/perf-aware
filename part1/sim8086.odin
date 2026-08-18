@@ -37,6 +37,8 @@ main :: proc() {
 	cpu: Cpu
 
 	for {
+		reader.i = i64(cpu.ip)
+
 		old := cpu
 		inst := decode_instruction(&reader) or_break
 		cpu.ip = u16(reader.i)

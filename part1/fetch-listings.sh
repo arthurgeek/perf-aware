@@ -21,6 +21,8 @@ files=(
     listing_0046_add_sub_cmp.txt
     listing_0048_ip_register.asm
     listing_0048_ip_register.txt
+    listing_0049_conditional_jumps.asm
+    listing_0049_conditional_jumps.txt
 )
 
 mkdir -p listings

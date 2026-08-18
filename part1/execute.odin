@@ -39,28 +39,37 @@ update_flags :: proc(flags: ^Flags, result: u16, carry, aux: bool) {
 	if i16(result) < 0 do flags^ += {.Sign}
 }
 
-execute_instruction :: proc(cpu: ^Cpu, inst: Instruction) {
-	dst_reg, is_reg := inst.dst.(Register)
-	fmt.assertf(is_reg, "expected register destination, got %v in %v", inst.dst, inst)
-
-	value: u16
-
-	switch v in inst.src {
+operand_value :: proc(cpu: ^Cpu, op: Operand) -> u16 {
+	switch v in op {
 	case Immediate:
-		value = u16(v)
+		return u16(v)
 	case Register:
-		value = cpu.registers[v.index]
+		return cpu.registers[v.index]
 	case EffectiveAddress, DirectAddress, JumpOffset:
-		fmt.panicf("expected immediate or register source, got %v in %v", inst.src, inst)
+		fmt.panicf("cannot read %v as a source", op)
 	}
+	return 0
+}
 
+binary_operands :: proc(cpu: ^Cpu, inst: Instruction) -> (dst: RegisterIndex, old, value: u16) {
+	dst_reg := inst.dst.(Register)
+	return dst_reg.index, cpu.registers[dst_reg.index], operand_value(cpu, inst.src)
+}
+
+execute_jump :: proc(cpu: ^Cpu, inst: Instruction, condition: bool) {
+	offset := inst.dst.(JumpOffset)
+	if condition do cpu.ip = u16(i16(cpu.ip) + i16(offset))
+}
+
+execute_instruction :: proc(cpu: ^Cpu, inst: Instruction) {
 	switch inst.op {
 	case .mov:
-		cpu.registers[dst_reg.index] = value
+		dst, _, value := binary_operands(cpu, inst)
+		cpu.registers[dst] = value
 	case .add:
-		old := cpu.registers[dst_reg.index]
+		dst, old, value := binary_operands(cpu, inst)
 		result := old + value
-		cpu.registers[dst_reg.index] = result
+		cpu.registers[dst] = result
 
 		update_flags(
 			&cpu.flags,
@@ -69,19 +78,20 @@ execute_instruction :: proc(cpu: ^Cpu, inst: Instruction) {
 			aux = (old & 0xF) + (value & 0xF) > 0xF,
 		)
 	case .sub, .cmp:
-		old := cpu.registers[dst_reg.index]
+		dst, old, value := binary_operands(cpu, inst)
 		result := old - value
 		// cmp is sub without the writeback
-		if inst.op == .sub do cpu.registers[dst_reg.index] = result
+		if inst.op == .sub do cpu.registers[dst] = result
 
 		update_flags(&cpu.flags, result, carry = value > old, aux = value & 0xF > old & 0xF)
+	case .jne:
+		execute_jump(cpu, inst, .Zero not_in cpu.flags)
 	case .none,
 	     .jo,
 	     .jno,
 	     .jb,
 	     .jnb,
 	     .je,
-	     .jne,
 	     .jbe,
 	     .ja,
 	     .js,
