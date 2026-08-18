@@ -32,6 +32,24 @@ Op :: enum {
 RegisterIndex :: distinct byte
 EABase :: distinct byte
 
+reg_encoding := [8][2]string {
+	{"al", "ax"},
+	{"cl", "cx"},
+	{"dl", "dx"},
+	{"bl", "bx"},
+	{"ah", "sp"},
+	{"ch", "bp"},
+	{"dh", "si"},
+	{"bh", "di"},
+}
+
+rm_encoding := [8]string{"bx+si", "bx+di", "bp+si", "bp+di", "si", "di", "bp", "bx"}
+
+ea_base_registers := [8][]RegisterIndex {
+	0b010 = {0b101, 0b110},
+	0b111 = {0b011},
+}
+
 Register :: struct {
 	index: RegisterIndex,
 	wide:  bool,

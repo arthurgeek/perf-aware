@@ -12,19 +12,6 @@ ModRegRm :: bit_field byte {
 	mod_field: byte | 2,
 }
 
-rm_encoding := [?]string{"bx+si", "bx+di", "bp+si", "bp+di", "si", "di", "bp", "bx"}
-
-reg_encoding := [?][2]string {
-	{"al", "ax"},
-	{"cl", "cx"},
-	{"dl", "dx"},
-	{"bl", "bx"},
-	{"ah", "sp"},
-	{"ch", "bp"},
-	{"dh", "si"},
-	{"bh", "di"},
-}
-
 arith_ops := [8]Op {
 	0b000 = .add,
 	0b101 = .sub,

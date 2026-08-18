@@ -31,11 +31,6 @@ Cpu :: struct {
 	memory:    []u8,
 }
 
-ea_base_registers := [8][]RegisterIndex {
-	0b111 = {0b011},
-	0b010 = {0b101, 0b110},
-}
-
 effective_address :: proc(cpu: ^Cpu, ea: EffectiveAddress) -> u16 {
 	base_registers := ea_base_registers[ea.base]
 	fmt.assertf(base_registers != nil, "unimplemented effective address base in %v", ea)
