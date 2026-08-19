@@ -48,8 +48,6 @@ format_flags :: proc(flags: Flags) -> string {
 }
 
 print_trace :: proc(old, new: Cpu) {
-	fmt.printf(" ;")
-
 	for value, index in new.registers {
 		if old.registers[index] != value {
 			fmt.printf(
@@ -68,6 +66,12 @@ print_trace :: proc(old, new: Cpu) {
 	if old.flags != new.flags {
 		fmt.printf(" flags:%s->%s", format_flags(old.flags), format_flags(new.flags))
 	}
+}
+
+print_clocks :: proc(base_clock, ea_clock: u16, total: uint) {
+	fmt.printf(" Clocks: +%d = %d", base_clock + ea_clock, total)
+
+	if ea_clock != 0 do fmt.printf(" (%d + %dea)", base_clock, ea_clock)
 }
 
 print_final_registers :: proc(cpu: Cpu) {

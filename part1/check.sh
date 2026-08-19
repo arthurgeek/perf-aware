@@ -46,8 +46,17 @@ report_failure() {
 
 # Strip incidentals before comparing simulation transcripts: CRLF endings,
 # the "--- ... execution ---" banner, trailing whitespace, and blank lines.
+# Clock-era transcripts also carry asterisk banners, a boilerplate warning,
+# and a whole 8088 section; we only simulate the 8086, so those go too.
 normalize_transcript() {
-    tr -d '\r' | sed -e '/^--- .*---$/d' -e 's/[[:space:]]*$//' -e '/^$/d'
+    tr -d '\r' | sed \
+        -e '/^\*\*\*\* 8088 \*\*\*\*$/,$d' \
+        -e '/^\*\+$/d' \
+        -e '/^\*\*\*\* 8086 \*\*\*\*$/d' \
+        -e '/^WARNING: Clocks/,+2d' \
+        -e '/^--- .*---$/d' \
+        -e 's/[[:space:]]*$//' \
+        -e '/^$/d'
 }
 
 # Course transcripts from before listing 48 predate ip tracking; drop our ip
@@ -92,7 +101,14 @@ for asm in "${listings[@]}"; do
         expected=$build/$name.expected.txt
         actual=$build/$name.actual.txt
 
-        "$DECODER" -exec "$ref" | normalize_transcript >"$actual"
+        # Clock-era transcripts (listing 56 onward) were generated with cycle
+        # estimates; the golden's own dialect tells us which flags to pass.
+        exec_flags=(-exec)
+        if grep -q 'Clocks:' "$txt"; then
+            exec_flags+=(-explainclocks)
+        fi
+
+        "$DECODER" "${exec_flags[@]}" "$ref" | normalize_transcript >"$actual"
         normalize_transcript <"$txt" >"$expected"
 
         if ! grep -q 'ip:' "$expected"; then

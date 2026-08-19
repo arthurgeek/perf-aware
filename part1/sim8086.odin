@@ -6,9 +6,10 @@ import "core:fmt"
 import "core:os"
 
 Options :: struct {
-	exec: bool `usage:"simulate the program instead of only disassembling it"`,
-	dump: bool `usage:"write memory to sim86_memory_0.data after execution"`,
-	file: string `args:"pos=0,required" usage:"8086 binary to decode"`,
+	exec:          bool `usage:"simulate the program instead of only disassembling it"`,
+	dump:          bool `usage:"write memory to sim86_memory_0.data after execution"`,
+	explainclocks: bool `usage:"estimate clocks per instruction, with a breakdown"`,
+	file:          string `args:"pos=0,required" usage:"8086 binary to decode"`,
 }
 
 main :: proc() {
@@ -29,6 +30,8 @@ main :: proc() {
 	cpu.memory = make([]u8, 65536)
 	defer delete(cpu.memory)
 
+	total_clocks: uint
+
 	// load the program into the machine's memory: code and data share the
 	// address space, and fetch reads through the same bytes the program can write
 	program_len := copy(cpu.memory, data)
@@ -47,6 +50,16 @@ main :: proc() {
 			print_instruction(inst)
 
 			if opts.exec {
+				fmt.printf(" ;")
+
+				if opts.explainclocks {
+					base_clock, ea_clock := calculate_clocks(inst)
+					total_clocks += uint(base_clock + ea_clock)
+
+					print_clocks(base_clock, ea_clock, total_clocks)
+					fmt.printf(" |")
+				}
+
 				execute_instruction(&cpu, inst)
 				print_trace(old, cpu)
 			}

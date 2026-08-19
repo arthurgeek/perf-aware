@@ -17,10 +17,10 @@ Flag :: enum {
 Flags :: bit_set[Flag;u16]
 
 Cpu :: struct {
-	registers: Registers,
-	flags:     Flags,
-	ip:        u16,
-	memory:    []u8,
+	registers:    Registers,
+	flags:        Flags,
+	ip:           u16,
+	memory:       []u8,
 }
 
 effective_address :: proc(cpu: ^Cpu, ea: EffectiveAddress) -> u16 {
@@ -82,9 +82,112 @@ write_operand :: proc(cpu: ^Cpu, op: Operand, wide: bool, value: u16) {
 	}
 }
 
-binary_operands :: proc(cpu: ^Cpu, inst: Instruction) -> (dst: RegisterIndex, old, value: u16) {
-	dst_reg := inst.dst.(Register)
-	return dst_reg.index, cpu.registers[dst_reg.index], operand_value(cpu, inst.src, inst.wide)
+Operand_Kind :: enum {
+	register,
+	memory,
+	immediate,
+}
+
+operand_kind :: proc(op: Operand) -> Operand_Kind {
+	switch v in op {
+	case Register:
+		return .register
+	case EffectiveAddress, DirectAddress:
+		return .memory
+	case Immediate:
+		return .immediate
+	case JumpOffset:
+	}
+
+	fmt.panicf("no operand kind for %v", op)
+}
+
+is_accumulator :: proc(op: Operand) -> bool {
+	reg, is_reg := op.(Register)
+	return is_reg && reg.index == 0
+}
+
+ea_clocks_table := [8][2]u16{{7, 11}, {8, 12}, {8, 12}, {7, 11}, {5, 9}, {5, 9}, {5, 9}, {5, 9}}
+
+ea_clocks :: proc(op: Operand) -> u16 {
+	switch v in op {
+	case DirectAddress:
+		return 6
+	case EffectiveAddress:
+		return ea_clocks_table[v.base][v.disp != 0 ? 1 : 0]
+	case Register, Immediate, JumpOffset:
+		return 0
+	}
+
+	return 0
+}
+
+calculate_clocks :: proc(inst: Instruction) -> (base, ea: u16) {
+	switch inst.op {
+	case .mov:
+		dst, src := operand_kind(inst.dst), operand_kind(inst.src)
+
+		_, dst_is_direct := inst.dst.(DirectAddress)
+		_, src_is_direct := inst.src.(DirectAddress)
+
+		switch {
+		case dst_is_direct && is_accumulator(inst.src):
+			return 10, 0
+		case is_accumulator(inst.dst) && src_is_direct:
+			return 10, 0
+		case dst == .memory && src == .register:
+			return 9, ea_clocks(inst.dst)
+		case dst == .register && src == .memory:
+			return 8, ea_clocks(inst.src)
+		case dst == .register && src == .register:
+			return 2, 0
+		case dst == .register && src == .immediate:
+			return 4, 0
+		case dst == .memory && src == .immediate:
+			return 10, ea_clocks(inst.dst)
+		}
+	case .add:
+		dst, src := operand_kind(inst.dst), operand_kind(inst.src)
+
+		switch {
+		case dst == .memory && src == .register:
+			return 16, ea_clocks(inst.dst)
+		case dst == .register && src == .memory:
+			return 9, ea_clocks(inst.src)
+		case dst == .register && src == .register:
+			return 3, 0
+		case dst == .register && src == .immediate:
+			return 4, 0
+		case dst == .memory && src == .immediate:
+			return 17, ea_clocks(inst.dst)
+		}
+	case .none,
+	     .sub,
+	     .cmp,
+	     .jo,
+	     .jno,
+	     .jb,
+	     .jnb,
+	     .je,
+	     .jne,
+	     .jbe,
+	     .ja,
+	     .js,
+	     .jns,
+	     .jp,
+	     .jnp,
+	     .jl,
+	     .jnl,
+	     .jle,
+	     .jg,
+	     .loopnz,
+	     .loopz,
+	     .loop,
+	     .jcxz:
+		fmt.panicf("no clocks for %v in %v", inst.op, inst)
+	}
+
+	fmt.panicf("no clocks for %v with %v, %v", inst.op, inst.dst, inst.src)
 }
 
 execute_jump :: proc(cpu: ^Cpu, inst: Instruction, condition: bool) {
@@ -97,9 +200,10 @@ execute_instruction :: proc(cpu: ^Cpu, inst: Instruction) {
 	case .mov:
 		write_operand(cpu, inst.dst, inst.wide, operand_value(cpu, inst.src, inst.wide))
 	case .add:
-		dst, old, value := binary_operands(cpu, inst)
+		old := operand_value(cpu, inst.dst, inst.wide)
+		value := operand_value(cpu, inst.src, inst.wide)
 		result := old + value
-		cpu.registers[dst] = result
+		write_operand(cpu, inst.dst, inst.wide, result)
 
 		update_flags(
 			&cpu.flags,
@@ -108,10 +212,11 @@ execute_instruction :: proc(cpu: ^Cpu, inst: Instruction) {
 			aux = (old & 0xF) + (value & 0xF) > 0xF,
 		)
 	case .sub, .cmp:
-		dst, old, value := binary_operands(cpu, inst)
+		old := operand_value(cpu, inst.dst, inst.wide)
+		value := operand_value(cpu, inst.src, inst.wide)
 		result := old - value
 		// cmp is sub without the writeback
-		if inst.op == .sub do cpu.registers[dst] = result
+		if inst.op == .sub do write_operand(cpu, inst.dst, inst.wide, result)
 
 		update_flags(&cpu.flags, result, carry = value > old, aux = value & 0xF > old & 0xF)
 	case .jne:

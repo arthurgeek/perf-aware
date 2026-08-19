@@ -31,6 +31,8 @@ files=(
     listing_0053_add_loop_challenge.txt
     listing_0054_draw_rectangle.asm
     listing_0054_draw_rectangle.txt
+    listing_0056_estimating_cycles.asm
+    listing_0056_estimating_cycles.txt
 )
 
 mkdir -p listings
