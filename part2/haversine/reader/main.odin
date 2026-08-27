@@ -13,55 +13,97 @@ Pair :: struct {
 }
 
 parse_pair_object :: proc(parser: ^json_parser.Parser) -> (Pair, bool) {
+	metrics.profile_function()
+
 	pair: Pair
 	has_x0, has_y0, has_x1, has_y1 := false, false, false, false
 
-	json_parser.consume(parser, .LEFT_BRACE, "Expected coordinate pair object")
-	if !json_parser.check(parser, .RIGHT_BRACE) {
-		for !parser.had_error {
-			key, has_key := json_parser.consume_string(parser, "Expected coordinate field name")
-			if !has_key {
-				return {}, false
-			}
+	{
+		metrics.profile_block("Pair Open")
+		json_parser.consume(parser, .LEFT_BRACE, "Expected coordinate pair object")
+	}
+	{
+		metrics.profile_block("Pair Fields")
+		if !json_parser.check(parser, .RIGHT_BRACE) {
+			for !parser.had_error {
+				key: string
+				has_key: bool
+				{
+					metrics.profile_block("Field Name")
+					key, has_key = json_parser.consume_string(parser, "Expected coordinate field name")
+					if !has_key {
+						return {}, false
+					}
+				}
 
-			json_parser.consume(parser, .COLON, "Expected colon after coordinate field name")
-			switch key {
-			case "x0":
-				pair.x0, has_x0 = json_parser.consume_number(parser, "Expected numeric coordinate")
-			case "y0":
-				pair.y0, has_y0 = json_parser.consume_number(parser, "Expected numeric coordinate")
-			case "x1":
-				pair.x1, has_x1 = json_parser.consume_number(parser, "Expected numeric coordinate")
-			case "y1":
-				pair.y1, has_y1 = json_parser.consume_number(parser, "Expected numeric coordinate")
-			case:
-				json_parser.skip_json_value(parser)
-			}
+				{
+					metrics.profile_block("Field Colon")
+					json_parser.consume(parser, .COLON, "Expected colon after coordinate field name")
+				}
+				switch key {
+				case "x0":
+					{
+						metrics.profile_block("Coordinate x0")
+						pair.x0, has_x0 = json_parser.consume_number(parser, "Expected numeric coordinate")
+					}
+				case "y0":
+					{
+						metrics.profile_block("Coordinate y0")
+						pair.y0, has_y0 = json_parser.consume_number(parser, "Expected numeric coordinate")
+					}
+				case "x1":
+					{
+						metrics.profile_block("Coordinate x1")
+						pair.x1, has_x1 = json_parser.consume_number(parser, "Expected numeric coordinate")
+					}
+				case "y1":
+					{
+						metrics.profile_block("Coordinate y1")
+						pair.y1, has_y1 = json_parser.consume_number(parser, "Expected numeric coordinate")
+					}
+				case:
+					{
+						metrics.profile_block("Skipped Value")
+						json_parser.skip_json_value(parser)
+					}
+				}
 
-			if !json_parser.match(parser, .COMMA) do break
+				{
+					metrics.profile_block("Field Separator")
+					if !json_parser.match(parser, .COMMA) do break
+				}
+			}
 		}
 	}
 
-	closing := json_parser.consume(
-		parser,
-		.RIGHT_BRACE,
-		"Expected closing brace after coordinate pair",
-	)
-	if !parser.had_error && !(has_x0 && has_y0 && has_x1 && has_y1) {
-		json_parser.parser_error(parser, closing, "Coordinate pair requires x0, y0, x1, and y1")
+	{
+		metrics.profile_block("Pair Finish")
+		closing := json_parser.consume(
+			parser,
+			.RIGHT_BRACE,
+			"Expected closing brace after coordinate pair",
+		)
+		if !parser.had_error && !(has_x0 && has_y0 && has_x1 && has_y1) {
+			json_parser.parser_error(parser, closing, "Coordinate pair requires x0, y0, x1, and y1")
+		}
 	}
 	return pair, !parser.had_error
 }
 
 parse_pairs_array :: proc(parser: ^json_parser.Parser) -> (pair_count: int, total: f64) {
+	metrics.profile_function()
+
 	json_parser.consume(parser, .LEFT_BRACKET, "Expected pairs array")
 	if !json_parser.check(parser, .RIGHT_BRACKET) {
 		for !parser.had_error {
 			pair, ok := parse_pair_object(parser)
 			if !ok do return
 
-			total += haversine_lib.haversine(pair.x0, pair.y0, pair.x1, pair.y1)
-			pair_count += 1
+			{
+				metrics.profile_block("Haversine Sum")
+				total += haversine_lib.haversine(pair.x0, pair.y0, pair.x1, pair.y1)
+				pair_count += 1
+			}
 
 			if !json_parser.match(parser, .COMMA) do break
 		}
@@ -77,26 +119,37 @@ parse_root_object :: proc(
 	total: f64,
 	found_pairs: bool,
 ) {
-	json_parser.consume(parser, .LEFT_BRACE, "Expected root object")
-	if !json_parser.check(parser, .RIGHT_BRACE) {
-		for !parser.had_error {
-			key, has_key := json_parser.consume_string(parser, "Expected root field name")
-			if !has_key {
-				return
-			}
+	metrics.profile_function()
 
-			json_parser.consume(parser, .COLON, "Expected colon after root field name")
-			if key == "pairs" {
-				pair_count, total = parse_pairs_array(parser)
-				found_pairs = true
-			} else {
-				json_parser.skip_json_value(parser)
-			}
+	{
+		metrics.profile_block("Root Setup")
+		json_parser.consume(parser, .LEFT_BRACE, "Expected root object")
+	}
+	{
+		metrics.profile_block("Root Fields")
+		if !json_parser.check(parser, .RIGHT_BRACE) {
+			for !parser.had_error {
+				key, has_key := json_parser.consume_string(parser, "Expected root field name")
+				if !has_key {
+					return
+				}
 
-			if !json_parser.match(parser, .COMMA) do break
+				json_parser.consume(parser, .COLON, "Expected colon after root field name")
+				if key == "pairs" {
+					pair_count, total = parse_pairs_array(parser)
+					found_pairs = true
+				} else {
+					json_parser.skip_json_value(parser)
+				}
+
+				if !json_parser.match(parser, .COMMA) do break
+			}
 		}
 	}
-	json_parser.consume(parser, .RIGHT_BRACE, "Expected closing brace after root object")
+	{
+		metrics.profile_block("Root Finish")
+		json_parser.consume(parser, .RIGHT_BRACE, "Expected closing brace after root object")
+	}
 	return
 }
 
@@ -111,10 +164,7 @@ parse_haversine_source :: proc(source: string) -> (pair_count: int, sum: f64, ok
 	}
 
 	found_pairs: bool
-	{
-		metrics.profile_block("Parse Root")
-		pair_count, sum, found_pairs = parse_root_object(&parser)
-	}
+	pair_count, sum, found_pairs = parse_root_object(&parser)
 	{
 		metrics.profile_block("Parser Finish")
 		if !parser.had_error && !found_pairs {
