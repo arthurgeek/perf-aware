@@ -101,22 +101,37 @@ parse_root_object :: proc(
 }
 
 parse_haversine_source :: proc(source: string) -> (pair_count: int, sum: f64, ok: bool) {
-	parser := json_parser.parser_make(source)
-	if parser.had_error do return
+	metrics.profile_function()
+
+	parser: json_parser.Parser
+	{
+		metrics.profile_block("Parser Setup")
+		parser = json_parser.parser_make(source)
+		if parser.had_error do return
+	}
 
 	found_pairs: bool
-	pair_count, sum, found_pairs = parse_root_object(&parser)
-	if !parser.had_error && !found_pairs {
-		json_parser.parser_error(
-			&parser,
-			json_parser.parser_peek(&parser),
-			"Root object requires pairs array",
-		)
+	{
+		metrics.profile_block("Parse Root")
+		pair_count, sum, found_pairs = parse_root_object(&parser)
 	}
-	if !json_parser.finish(&parser) do return 0, 0, false
+	{
+		metrics.profile_block("Parser Finish")
+		if !parser.had_error && !found_pairs {
+			json_parser.parser_error(
+				&parser,
+				json_parser.parser_peek(&parser),
+				"Root object requires pairs array",
+			)
+		}
+		if !json_parser.finish(&parser) do return 0, 0, false
+	}
 
-	if pair_count > 0 {
-		sum /= f64(pair_count)
+	{
+		metrics.profile_block("Average")
+		if pair_count > 0 {
+			sum /= f64(pair_count)
+		}
 	}
 	return pair_count, sum, true
 }
@@ -153,16 +168,9 @@ main :: proc() {
 	os.exit(run())
 }
 
-print_time_elapsed :: proc(label: string, cpu_freq, total, start, end: u64) {
-	elapsed := end - start
-	ms := 1000.0 * f64(elapsed) / f64(cpu_freq)
-	percent := 100.0 * f64(elapsed) / f64(total)
-	fmt.printfln("  %s: %.4f ms (%.2f%%)", label, ms, percent)
-}
-
 run :: proc() -> int {
-	total_start := metrics.read_cpu_timer()
-	startup_start := metrics.read_cpu_timer()
+	metrics.begin_profile()
+	defer metrics.end_and_print_profile()
 
 	Options :: struct {
 		file:      ^os.File `args:"pos=0,required,file=r" usage:"Haversine JSON file."`,
@@ -170,46 +178,35 @@ run :: proc() -> int {
 	}
 
 	options: Options
-	flags.parse_or_exit(&options, os.args)
+	{
+		metrics.profile_block("Startup")
+		flags.parse_or_exit(&options, os.args)
+	}
 	defer os.close(options.file)
 	defer if options.validator != nil {
 		os.close(options.validator)
 	}
 
-	startup_end := metrics.read_cpu_timer()
-	read_start := metrics.read_cpu_timer()
-
-	data, read_err := os.read_entire_file(options.file, context.allocator)
+	data: []byte
+	read_err: os.Error
+	{
+		metrics.profile_block("Read")
+		data, read_err = os.read_entire_file(options.file, context.allocator)
+	}
 	defer delete(data)
 	if read_err != nil {
 		fmt.eprintln("failed to read input:", read_err)
 		return 1
 	}
 
-	read_end := metrics.read_cpu_timer()
-	parse_start := metrics.read_cpu_timer()
-
 	pair_count, sum, ok := parse_haversine_source(string(data))
 	if !ok do return 1
 
-	parse_end := metrics.read_cpu_timer()
-	output_start := metrics.read_cpu_timer()
-
-	fmt.printfln("Input size: %d", len(data))
-	fmt.printfln("Pair count: %d", pair_count)
-	fmt.printfln("Haversine sum: %.16f", sum)
-
-	output_end := metrics.read_cpu_timer()
-	total_end := metrics.read_cpu_timer()
-	total_elapsed := total_end - total_start
-	cpu_freq := metrics.estimate_cpu_timer_freq()
-	if cpu_freq > 0 {
-		total_ms := 1000.0 * f64(total_elapsed) / f64(cpu_freq)
-		fmt.printfln("\nTotal time: %.4f ms (CPU freq %d)", total_ms, cpu_freq)
-		print_time_elapsed("Startup", cpu_freq, total_elapsed, startup_start, startup_end)
-		print_time_elapsed("Read", cpu_freq, total_elapsed, read_start, read_end)
-		print_time_elapsed("Parse+Sum", cpu_freq, total_elapsed, parse_start, parse_end)
-		print_time_elapsed("MiscOutput", cpu_freq, total_elapsed, output_start, output_end)
+	{
+		metrics.profile_block("MiscOutput")
+		fmt.printfln("Input size: %d", len(data))
+		fmt.printfln("Pair count: %d", pair_count)
+		fmt.printfln("Haversine sum: %.16f", sum)
 	}
 
 	if options.validator != nil && !print_validation(options.validator, pair_count, sum) {
