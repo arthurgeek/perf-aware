@@ -1,4 +1,6 @@
-package haversine
+package generator
+
+import haversine_lib ".."
 
 import "core:bufio"
 import "core:flags"
@@ -91,7 +93,11 @@ main :: proc() {
 
 	answer_buffer: [64 * 1024]byte
 	answer_buffered_writer: bufio.Writer
-	bufio.writer_init_with_buf(&answer_buffered_writer, os.to_stream(answer_file), answer_buffer[:])
+	bufio.writer_init_with_buf(
+		&answer_buffered_writer,
+		os.to_stream(answer_file),
+		answer_buffer[:],
+	)
 	answer_writer := bufio.writer_to_writer(&answer_buffered_writer)
 
 	if _, write_err := io.write_string(json_writer, "{\"pairs\":["); write_err != nil {
@@ -125,12 +131,7 @@ main :: proc() {
 			y1 = random_degree(y_center, y_radius, 90.0),
 		}
 
-		distance := haversine(
-			pair.x0,
-			pair.y0,
-			pair.x1,
-			pair.y1,
-		)
+		distance := haversine_lib.haversine(pair.x0, pair.y0, pair.x1, pair.y1)
 		sum += distance
 
 		if write_err := write_binary_f64(answer_writer, distance); write_err != nil {
