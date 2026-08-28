@@ -4,6 +4,7 @@ import "base:runtime"
 import "core:fmt"
 
 MAX_PROFILE_ENTRIES :: 256
+PROFILER_ENABLED    :: #config(PROFILER, false)
 
 @(private)
 Profile_Entry :: struct {
@@ -38,7 +39,9 @@ profiler: Profiler
 begin_profile :: proc() {
 	assert(!profiler.active)
 	profiler.active = true
-	profiler.current_parent_index = -1
+	when PROFILER_ENABLED {
+		profiler.current_parent_index = -1
+	}
 	profiler.total_start = read_cpu_timer()
 }
 
@@ -49,49 +52,55 @@ same_location :: proc(a, b: runtime.Source_Code_Location) -> bool {
 
 @(private)
 profile_begin :: proc(name: string, location: runtime.Source_Code_Location) -> Profile_Block {
-	assert(profiler.active)
-	parent_index := profiler.current_parent_index
-	entry_index := -1
-	for entry, index in profiler.entries[:profiler.entry_count] {
-		if same_location(entry.location, location) {
-			entry_index = index
-			break
+	when PROFILER_ENABLED {
+		assert(profiler.active)
+		parent_index := profiler.current_parent_index
+		entry_index := -1
+		for entry, index in profiler.entries[:profiler.entry_count] {
+			if same_location(entry.location, location) {
+				entry_index = index
+				break
+			}
 		}
-	}
-	if entry_index < 0 {
-		assert(profiler.entry_count < MAX_PROFILE_ENTRIES)
-		entry_index = profiler.entry_count
-		profiler.entries[entry_index] = {
-			procedure = name,
-			location = location,
+		if entry_index < 0 {
+			assert(profiler.entry_count < MAX_PROFILE_ENTRIES)
+			entry_index = profiler.entry_count
+			profiler.entries[entry_index] = {
+				procedure = name,
+				location = location,
+				parent_index = parent_index,
+			}
+			profiler.entry_count += 1
+		}
+		entry := &profiler.entries[entry_index]
+		block := Profile_Block {
+			entry_index = entry_index,
 			parent_index = parent_index,
+			old_elapsed_ticks_inclusive = entry.elapsed_ticks_inclusive,
 		}
-		profiler.entry_count += 1
+		profiler.current_parent_index = entry_index
+		block.start = read_cpu_timer()
+		return block
+	} else {
+		return {}
 	}
-	entry := &profiler.entries[entry_index]
-	block := Profile_Block {
-		entry_index = entry_index,
-		parent_index = parent_index,
-		old_elapsed_ticks_inclusive = entry.elapsed_ticks_inclusive,
-	}
-	profiler.current_parent_index = entry_index
-	block.start = read_cpu_timer()
-	return block
 }
 
 @(private)
 profile_end :: proc(block: Profile_Block) {
-	end := read_cpu_timer()
-	elapsed := end - block.start
-	profiler.current_parent_index = block.parent_index
-	if block.parent_index >= 0 {
-		profiler.entries[block.parent_index].elapsed_ticks_exclusive -= elapsed
-	}
+	when PROFILER_ENABLED {
+		end := read_cpu_timer()
+		elapsed := end - block.start
+		profiler.current_parent_index = block.parent_index
+		if block.parent_index >= 0 {
+			profiler.entries[block.parent_index].elapsed_ticks_exclusive -= elapsed
+		}
 
-	entry := &profiler.entries[block.entry_index]
-	entry.elapsed_ticks_exclusive += elapsed
-	entry.elapsed_ticks_inclusive = block.old_elapsed_ticks_inclusive + elapsed
-	entry.hit_count += 1
+		entry := &profiler.entries[block.entry_index]
+		entry.elapsed_ticks_exclusive += elapsed
+		entry.elapsed_ticks_inclusive = block.old_elapsed_ticks_inclusive + elapsed
+		entry.hit_count += 1
+	}
 }
 
 @(deferred_in_out = profile_block_end)
@@ -196,7 +205,13 @@ end_and_print_profile :: proc() {
 		total_ms := 1000.0 * f64(total_elapsed) / f64(cpu_freq)
 		fmt.printfln("Total: %.4f ms (CPU freq %d)", total_ms, cpu_freq)
 	}
-	print_profile_entries(-1, 1, total_elapsed, cpu_freq)
+	when PROFILER_ENABLED {
+		print_profile_entries(-1, 1, total_elapsed, cpu_freq)
+	}
 
-	profiler = {}
+	when PROFILER_ENABLED {
+		profiler = {}
+	} else {
+		profiler.active = false
+	}
 }
