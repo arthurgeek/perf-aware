@@ -27,7 +27,10 @@ parse_pair_object :: proc(parser: ^json_parser.Parser) -> (Pair, bool) {
 				has_key: bool
 				{
 					metrics.profile_block("Field Name")
-					key, has_key = json_parser.consume_string(parser, "Expected coordinate field name")
+					key, has_key = json_parser.consume_string(
+						parser,
+						"Expected coordinate field name",
+					)
 					if !has_key {
 						return {}, false
 					}
@@ -35,28 +38,44 @@ parse_pair_object :: proc(parser: ^json_parser.Parser) -> (Pair, bool) {
 
 				{
 					metrics.profile_block("Field Colon")
-					json_parser.consume(parser, .COLON, "Expected colon after coordinate field name")
+					json_parser.consume(
+						parser,
+						.COLON,
+						"Expected colon after coordinate field name",
+					)
 				}
 				switch key {
 				case "x0":
 					{
 						metrics.profile_block("Coordinate x0")
-						pair.x0, has_x0 = json_parser.consume_number(parser, "Expected numeric coordinate")
+						pair.x0, has_x0 = json_parser.consume_number(
+							parser,
+							"Expected numeric coordinate",
+						)
 					}
 				case "y0":
 					{
 						metrics.profile_block("Coordinate y0")
-						pair.y0, has_y0 = json_parser.consume_number(parser, "Expected numeric coordinate")
+						pair.y0, has_y0 = json_parser.consume_number(
+							parser,
+							"Expected numeric coordinate",
+						)
 					}
 				case "x1":
 					{
 						metrics.profile_block("Coordinate x1")
-						pair.x1, has_x1 = json_parser.consume_number(parser, "Expected numeric coordinate")
+						pair.x1, has_x1 = json_parser.consume_number(
+							parser,
+							"Expected numeric coordinate",
+						)
 					}
 				case "y1":
 					{
 						metrics.profile_block("Coordinate y1")
-						pair.y1, has_y1 = json_parser.consume_number(parser, "Expected numeric coordinate")
+						pair.y1, has_y1 = json_parser.consume_number(
+							parser,
+							"Expected numeric coordinate",
+						)
 					}
 				case:
 					{
@@ -91,7 +110,7 @@ parse_pairs_array :: proc(parser: ^json_parser.Parser) -> (pair_count: int, tota
 			if !ok do return
 
 			{
-				metrics.profile_block("Haversine Sum")
+				metrics.profile_bandwidth("Haversine Sum", size_of(Pair))
 				total += haversine_lib.haversine(pair.x0, pair.y0, pair.x1, pair.y1)
 				pair_count += 1
 			}
@@ -206,10 +225,12 @@ run :: proc() -> int {
 		os.close(options.validator)
 	}
 
+	input_file_size, _ := os.file_size(options.file)
+	input_byte_count := u64(input_file_size) if input_file_size > 0 else 0
 	data: []byte
 	read_err: os.Error
 	{
-		metrics.profile_block("Read")
+		metrics.profile_bandwidth("Read", input_byte_count)
 		data, read_err = os.read_entire_file(options.file, context.allocator)
 	}
 	defer delete(data)
