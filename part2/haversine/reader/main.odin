@@ -18,10 +18,7 @@ parse_pair_object :: proc(parser: ^json_parser.Parser) -> (Pair, bool) {
 	pair: Pair
 	has_x0, has_y0, has_x1, has_y1 := false, false, false, false
 
-	{
-		metrics.profile_block("Pair Open")
-		json_parser.consume(parser, .LEFT_BRACE, "Expected coordinate pair object")
-	}
+	json_parser.consume(parser, .LEFT_BRACE, "Expected coordinate pair object")
 	{
 		metrics.profile_block("Pair Fields")
 		if !json_parser.check(parser, .RIGHT_BRACE) {
@@ -68,24 +65,18 @@ parse_pair_object :: proc(parser: ^json_parser.Parser) -> (Pair, bool) {
 					}
 				}
 
-				{
-					metrics.profile_block("Field Separator")
-					if !json_parser.match(parser, .COMMA) do break
-				}
+				if !json_parser.match(parser, .COMMA) do break
 			}
 		}
 	}
 
-	{
-		metrics.profile_block("Pair Finish")
-		closing := json_parser.consume(
-			parser,
-			.RIGHT_BRACE,
-			"Expected closing brace after coordinate pair",
-		)
-		if !parser.had_error && !(has_x0 && has_y0 && has_x1 && has_y1) {
-			json_parser.parser_error(parser, closing, "Coordinate pair requires x0, y0, x1, and y1")
-		}
+	closing := json_parser.consume(
+		parser,
+		.RIGHT_BRACE,
+		"Expected closing brace after coordinate pair",
+	)
+	if !parser.had_error && !(has_x0 && has_y0 && has_x1 && has_y1) {
+		json_parser.parser_error(parser, closing, "Coordinate pair requires x0, y0, x1, and y1")
 	}
 	return pair, !parser.had_error
 }
@@ -121,67 +112,48 @@ parse_root_object :: proc(
 ) {
 	metrics.profile_function()
 
-	{
-		metrics.profile_block("Root Setup")
-		json_parser.consume(parser, .LEFT_BRACE, "Expected root object")
-	}
-	{
-		metrics.profile_block("Root Fields")
-		if !json_parser.check(parser, .RIGHT_BRACE) {
-			for !parser.had_error {
-				key, has_key := json_parser.consume_string(parser, "Expected root field name")
-				if !has_key {
-					return
-				}
-
-				json_parser.consume(parser, .COLON, "Expected colon after root field name")
-				if key == "pairs" {
-					pair_count, total = parse_pairs_array(parser)
-					found_pairs = true
-				} else {
-					json_parser.skip_json_value(parser)
-				}
-
-				if !json_parser.match(parser, .COMMA) do break
+	json_parser.consume(parser, .LEFT_BRACE, "Expected root object")
+	if !json_parser.check(parser, .RIGHT_BRACE) {
+		for !parser.had_error {
+			key, has_key := json_parser.consume_string(parser, "Expected root field name")
+			if !has_key {
+				return
 			}
+
+			json_parser.consume(parser, .COLON, "Expected colon after root field name")
+			if key == "pairs" {
+				pair_count, total = parse_pairs_array(parser)
+				found_pairs = true
+			} else {
+				json_parser.skip_json_value(parser)
+			}
+
+			if !json_parser.match(parser, .COMMA) do break
 		}
 	}
-	{
-		metrics.profile_block("Root Finish")
-		json_parser.consume(parser, .RIGHT_BRACE, "Expected closing brace after root object")
-	}
+	json_parser.consume(parser, .RIGHT_BRACE, "Expected closing brace after root object")
 	return
 }
 
 parse_haversine_source :: proc(source: string) -> (pair_count: int, sum: f64, ok: bool) {
 	metrics.profile_function()
 
-	parser: json_parser.Parser
-	{
-		metrics.profile_block("Parser Setup")
-		parser = json_parser.parser_make(source)
-		if parser.had_error do return
-	}
+	parser := json_parser.parser_make(source)
+	if parser.had_error do return
 
 	found_pairs: bool
 	pair_count, sum, found_pairs = parse_root_object(&parser)
-	{
-		metrics.profile_block("Parser Finish")
-		if !parser.had_error && !found_pairs {
-			json_parser.parser_error(
-				&parser,
-				json_parser.parser_peek(&parser),
-				"Root object requires pairs array",
-			)
-		}
-		if !json_parser.finish(&parser) do return 0, 0, false
+	if !parser.had_error && !found_pairs {
+		json_parser.parser_error(
+			&parser,
+			json_parser.parser_peek(&parser),
+			"Root object requires pairs array",
+		)
 	}
+	if !json_parser.finish(&parser) do return 0, 0, false
 
-	{
-		metrics.profile_block("Average")
-		if pair_count > 0 {
-			sum /= f64(pair_count)
-		}
+	if pair_count > 0 {
+		sum /= f64(pair_count)
 	}
 	return pair_count, sum, true
 }
@@ -228,10 +200,7 @@ run :: proc() -> int {
 	}
 
 	options: Options
-	{
-		metrics.profile_block("Startup")
-		flags.parse_or_exit(&options, os.args)
-	}
+	flags.parse_or_exit(&options, os.args)
 	defer os.close(options.file)
 	defer if options.validator != nil {
 		os.close(options.validator)
@@ -252,12 +221,9 @@ run :: proc() -> int {
 	pair_count, sum, ok := parse_haversine_source(string(data))
 	if !ok do return 1
 
-	{
-		metrics.profile_block("MiscOutput")
-		fmt.printfln("Input size: %d", len(data))
-		fmt.printfln("Pair count: %d", pair_count)
-		fmt.printfln("Haversine sum: %.16f", sum)
-	}
+	fmt.printfln("Input size: %d", len(data))
+	fmt.printfln("Pair count: %d", pair_count)
+	fmt.printfln("Haversine sum: %.16f", sum)
 
 	if options.validator != nil && !print_validation(options.validator, pair_count, sum) {
 		return 1
